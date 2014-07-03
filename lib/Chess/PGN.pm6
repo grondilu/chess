@@ -8,8 +8,8 @@ rule info { '[' ~ ']' [ <tag> <string> ] }
 token tag { <.alpha>+ }
 token string { '"' .+? '"' }
 
-rule move { <move-number> [ <single-move> <long-comment>? ] ** 1..2 }
-token single-move {
+rule move { <move-number> [ <half-move> <long-comment>? ] ** 1..2 }
+token half-move {
     [
 	| <pawn-moves>
 	| <pawn-takes>
