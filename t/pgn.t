@@ -1,7 +1,7 @@
 use Chess::PGN;
 
 use Test;
-plan *;
+plan 8;
 
 ok Chess::PGN.parse('1. e4'), "simple first move";
 ok Chess::PGN.parse('1. e4 d5 2. exd5'), "scandinavian";
