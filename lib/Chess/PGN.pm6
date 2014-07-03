@@ -8,7 +8,7 @@ rule info { '[' ~ ']' [ <tag> <string> ] }
 token tag { <.alpha>+ }
 token string { '"' .+? '"' }
 
-rule move { <move-number> [ <half-move> <long-comment>? ] ** 1..2 }
+rule move { <move-number> [ <half-move> <nag> *  <comment> * ] ** 1..2 }
 token half-move {
     [
 	| <pawn-moves>
@@ -17,10 +17,14 @@ token half-move {
 	| <piece-takes>
 	| <castle>
 	| <promotion>
-    ]< + ++ # >?<comment>?
+    ]< + ++ # >?<annotation>?
 }
-token comment { < ?? ? !? ?! ! !! > }
-token long-comment { '{' .+? '}' }
+token annotation { < ?? ? !? ?! ! !! > }
+token nag { '$'<.digit>+ }
+rule comment { 
+    | '{' .+? '}' 
+    | '(' <move>+ ')'
+}
 
 token pawn-moves { <square> }
 token pawn-takes { <file>'x'<square>'ep'? }
@@ -31,7 +35,7 @@ token promotion  { [ <pawn-moves> | <pawn-takes> ]'='<piece> }
 
 token disambiguation { <file> | <rank> }
 
-token move-number { <.digit>+\. }
+token move-number { <.digit>+< . ... > }
 
 token adjudication { <white-wins> | <black-wins> | <draw> }
 token white-wins { '1-0' }
