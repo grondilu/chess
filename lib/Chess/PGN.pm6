@@ -1,6 +1,6 @@
 grammar Chess::PGN;
 
-rule TOP { ^ <game>+ $ }
+rule TOP { ^ <game>+? $ }
 
 rule game { <info>* <move>* <adjudication>? }
 
