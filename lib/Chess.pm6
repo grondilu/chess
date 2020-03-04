@@ -18,5 +18,3 @@ sub show-FEN(Str $fen where Chess::FEN.parse($fen)) is export {
     # reset all formating
     print "\e[0m";
 }
-
-show-FEN 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
