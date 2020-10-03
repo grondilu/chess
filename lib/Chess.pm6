@@ -7,14 +7,12 @@ sub show-FEN(Str $fen where Chess::FEN.parse($fen)) is export {
     print "\e[30m";
     my %pieces = <k q b n r p K Q B N R P> Z=> <♚ ♛ ♝ ♞ ♜ ♟ ♔ ♕ ♗ ♘ ♖ ♙>;
     for $/<board>.split('/') {
-	my $r = $++;
-	my @pieces = flat map { /\d/ ?? ' ' xx +$/ !! %pieces{$_} // "?" }, .comb;
-	for ^8 -> $c {
-	    print ($r + $c) % 2 ?? "\e[100m" !! "\e[47m";
-	    print @pieces[$c] // '?';
-	}
-	print "\n";
+      my $r = $++;
+      my @pieces = flat map { /\d/ ?? ' ' xx +$/ !! %pieces{$_} // "?" }, .comb;
+      for ^8 -> $c {
+        print ($r + $c) % 2 ?? "\e[100m" !! "\e[47m";
+        print @pieces[$c] // '?';
+      }
+      print "\e[0m\n";
     }
-    # reset all formating
-    print "\e[0m";
 }
