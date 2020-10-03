@@ -5,8 +5,8 @@ use Chess::FEN;
 sub show-FEN(Str $fen where Chess::FEN.parse($fen)) is export {
     # set black foreground
     print "\e[30m";
-    my %pieces = <k q b n r p K Q B N R P> Z=> <♔ ♕ ♗ ♘ ♖ ♙ ♚ ♛ ♝ ♞ ♜ ♟>;
-    for $/<board>.split('/').reverse {
+    my %pieces = <k q b n r p K Q B N R P> Z=> <♚ ♛ ♝ ♞ ♜ ♟ ♔ ♕ ♗ ♘ ♖ ♙>;
+    for $/<board>.split('/') {
 	my $r = $++;
 	my @pieces = flat map { /\d/ ?? ' ' xx +$/ !! %pieces{$_} // "?" }, .comb;
 	for ^8 -> $c {
