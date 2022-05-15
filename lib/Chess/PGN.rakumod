@@ -40,7 +40,7 @@ token move-number { <.digit>+< . ... > }
 token adjudication { <white-wins> | <black-wins> | <draw> | <aborted-game> }
 token white-wins { '1-0' }
 token black-wins { '0-1' }
-token draw       { '1/2-1/2' }
+token draw       { '1/2-1/2' | \c[VULGAR FRACTION ONE HALF] ** 2 % '-' }
 token aborted-game { '*' }
 
 token piece { <[KQRBN]> }
