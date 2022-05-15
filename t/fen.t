@@ -12,4 +12,4 @@ for
     ok Chess::FEN.parse(.value), .key;
 }
 
-# vim: ft=perl6
+# vim: ft=raku

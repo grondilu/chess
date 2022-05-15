@@ -2,6 +2,8 @@ unit module Chess;
 
 use Chess::FEN;
 
+our constant startpos = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
 sub show-FEN(Str $fen where Chess::FEN.parse($fen)) is export {
     # set black foreground
     print "\e[30m";
