@@ -1,6 +1,6 @@
 # Chess
 
-Chess-related stuff in Perl 6
+Chess-related stuff in Raku
 
 ## PGN Grammar
 
