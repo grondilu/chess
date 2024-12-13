@@ -37,3 +37,10 @@ This requires :
   - [ImageMagick](https://imagemagick.org/script/command-line-tools.php)
   - GNU's *coreutils* (for `basenc`)
 
+## TODO
+
+ - [ ] implement rules of the game
+ - [ ] interface Stockfish
+ - [ ] make Board image internally, not relying on lichess
+ - [ ] opening and tactics trainer
+ - [ ] game database management
