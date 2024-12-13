@@ -35,8 +35,8 @@ class Bishop does Piece {
 }
 class Queen does Piece {
   method pseudo-moves(square $from) {
-    gather for &left, &right, &up, &down, |(&left, &right X∘ &up, &down) {
-      try loop (my $to = $from; $to = .($to); take $to) {}
+    gather for Bishop, Rook {
+      .take for .new.pseudo-moves($from);
     }
   }
 }
