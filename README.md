@@ -20,11 +20,20 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 ## General utilities
 
+### Displaying a chess position
+
 ```raku
 use Chess;
-show-FEN 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+show Chess::startpos;
 ```
 
-![Hopefully the code above should produce a nice colored representation of the board position](http://i.imgur.com/tbiUqwK.png)
+![Hopefully the code above should produce a nice colored representation of the starting position](https://i.imgur.com/oY9xqNe.png)
 
+This requires :
+
+  - an internet connection (to access the lichess API);
+  - [Kitty](https://sw.kovidgoyal.net/kitty/), or any terminal supporting its [graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
+  - `wget`
+  - [ImageMagick](https://imagemagick.org/script/command-line-tools.php)
+  - GNU's *coreutils* (for `basenc`)
 
