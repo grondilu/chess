@@ -27,13 +27,13 @@ use Chess;
 show Chess::startpos;
 ```
 
-![Hopefully the code above should produce a nice colored representation of the starting position](https://i.imgur.com/oY9xqNe.png)
+![Hopefully the code above should produce a nice representation of the starting position](https://i.imgur.com/lxE3vwZ.png)
 
 This requires :
 
-  - an internet connection (to access the lichess API);
+  - ~~an internet connection (to access the lichess API);~~
   - [Kitty](https://sw.kovidgoyal.net/kitty/), or any terminal supporting its [graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
-  - `wget`
+  - ~~`wget`~~
   - [ImageMagick](https://imagemagick.org/script/command-line-tools.php)
   - GNU's *coreutils* (for `basenc`)
 
@@ -41,6 +41,6 @@ This requires :
 
  - [ ] implement rules of the game
  - [ ] interface Stockfish
- - [ ] make Board image internally, not relying on lichess
+ - [x] make Board image internally, not relying on lichess
  - [ ] opening and tactics trainer
  - [ ] game database management

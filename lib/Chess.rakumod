@@ -1,5 +1,6 @@
 unit module Chess;
 use Chess::FEN;
+use Base64;
 
 enum color is export <black white>;
 
@@ -64,8 +65,28 @@ our subset fen of Str where { Chess::FEN.parse($_) }
 
 sub show(Str $fen where Chess::FEN.parse($fen)) is export {
   if %*ENV<TERM> eq 'xterm-kitty' {
-    my $url = "https://lichess1.org/export/fen.gif?fen={$fen.subst(' ', '_', :g)}&color={$fen ~~ /<<w>>/ ?? 'white' !! 'black'}";
-    my @payload = qqx{wget -O - -q "$url" |magick - png:-| basenc --base64 -w4096}.lines;
+    use Chess::Graphics;
+    
+    my $shell-command = gather {
+      my Bool $flip-board = $<active-color> eq 'b';
+      take "magick <(basenc --base64 -d <<<{Chess::Graphics::checkerboard}) png:-";
+      my ($r, $c) = 0, 0;
+      for $<board><rank> {
+	for .<symbol> {
+	  if .<empty-squares> {
+	    $c += $_;
+	  } else {
+	    my ($R, $C) = ($r, $c).map: { $Chess::Graphics::square-size * ($flip-board ?? 7 - $_ !! $_) }
+	    take "composite -geometry +$C+$R <(basenc --base64 -d <<<{%Chess::Graphics::pieces{$_}}) - png:-";
+	    $c++;
+	  }
+	}
+	$c = 0;
+	$r++;
+      }
+      take "basenc --base64 -w4096"
+    }.join(" |\n");
+    my @payload = qqx{$shell-command}.lines;
     say @payload > 1 ??
     [
       "\e_Ga=T,f=100,t=d,m=1;" ~ @payload.head ~ "\e\\",
@@ -87,5 +108,6 @@ sub show(Str $fen where Chess::FEN.parse($fen)) is export {
     }
   }
 }
+
 
 # vi: shiftwidth=2
