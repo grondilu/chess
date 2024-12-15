@@ -43,16 +43,10 @@ class Queen does Piece {
 }
 class Knight does Piece {
   method pseudo-moves(square $from) {
-    gather for
-	&left ∘ &left ∘ &up,
-	&left ∘ &left ∘ &down,
-	&right ∘ &right ∘ &down,
-	&right ∘ &right ∘ &up,
-	&up ∘ &up ∘ &left,
-	&up ∘ &up ∘ &right,
-	&down ∘ &down ∘ &left,
-	&down ∘ &down ∘ &right {
-      try take .($from)
+    gather for (&left, &right) X (&up, &down) -> (&a, &b) {
+      for &a ∘ &a ∘ &b, &a ∘ &b ∘ &b {
+	try take .($from)
+      }
     }
   }
 }
