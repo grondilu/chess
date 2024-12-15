@@ -57,8 +57,6 @@ class Knight does Piece {
   }
 }
 
-
-
 our constant startpos = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 our subset fen of Str where { Chess::FEN.parse($_) }
@@ -109,5 +107,4 @@ sub show(Str $fen where Chess::FEN.parse($fen)) is export {
   }
 }
 
-
-# vi: shiftwidth=2
+# vi: shiftwidth=2 nowrap
