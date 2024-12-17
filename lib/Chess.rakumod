@@ -1,59 +1,240 @@
 unit module Chess;
+use Chess::PGN;
 use Chess::FEN;
 use Base64;
 
 enum color is export <black white>;
 
 enum square ('a'..'h' X~ 1..8);
+sub row   (square $s --> UInt) { +$s.substr(1,1) }
+sub column(square $s --> Str)  { ~$s.substr(0,1) }
 
 sub  left(square $s where /<[b..h]>/) is export { return square::{$s.trans('b'..'h' => 'a'..'g')}; }
 sub right(square $s where /<[a..g]>/) is export { return square::{$s.trans('a'..'g' => 'b'..'h')}; }
 sub    up(square $s where /<[1..7]>/) is export { return square::{$s.trans(1..7     => 2..8    )}; }
 sub  down(square $s where /<[2..8]>/) is export { return square::{$s.trans(2..8     => 1..7    )}; }
 
-role Piece { method pseudo-moves(square $from) returns square {...} }
+class Position {...}
+class Move {...}
 
-class King does Piece {
-  method pseudo-moves(square $from) {
-    gather for &left, &right, &up, &down, |((&left, &right) X∘ (&up, &down)) {
-      try take .($from);
-    }
-  }
+role Piece[Str $symbol] {
+  has color $.color;
+  method symbol returns Str { $!color eq white ?? $symbol.uc !! $symbol }
 }
-class Rook does Piece {
-  method pseudo-moves(square $from) {
-    gather for &left, &right, &up, &down {
-      try loop (my $to = $from; $to = .($to); take $to) {}
-    }
+
+class King   does Piece['k'] {}
+class Rook   does Piece['r'] {}
+class Bishop does Piece['b'] {}
+class Queen  does Piece['q'] {}
+class Knight does Piece['n'] {}
+class Pawn   does Piece['p'] {}
+
+my constant %pieces = 
+  k => King,
+  q => Queen,
+  r => Rook,
+  b => Bishop,
+  n => Knight,
+  p => Pawn
+;
+
+our subset fen of Str where { Chess::FEN.parse($_) }
+our constant startpos = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+class Position {
+  has Piece %.board{square};
+  has color $.turn             is rw;
+  has UInt  $.half-move-clock  is rw;
+  has UInt  $.full-move-number is rw;
+  has square $.en-passant      is rw;
+  has Str $.castling-rights    is rw;
+
+  method clone { nextwith :board(%!board.clone), |%_ }
+  submethod BUILD(fen :$fen = startpos) {
+    my $pos = self;
+    my Int ($r, $c) = 0, 0;
+    Chess::FEN.parse:
+      $fen,
+      actions => class {
+	method rank($/) { $r++; $c=0 }
+	method piece($/) {
+	  $pos.board{
+	    Chess::square::{('a'..'h')[$c++] ~ (7-$r)+1}
+	  } = %pieces{$/.lc}.new(:color($/ eq $/.uc ?? white !! black));
+	}
+	method empty-squares($/)    { $c+=$/ }
+	method active-color($/)     { $pos.turn = $/ eq 'w' ?? white !! black }
+	method half-move-clock($/)  { $pos.half-move-clock = +$/ }
+	method en-passant($/)       { $pos.en-passant = $/ eq '-' ?? square !! square::{$/} }
+	method castling($/)         { $pos.castling-rights = ~$/ }
+	method full-move-number($/) { $pos.full-move-number = +$/ }
+      }
   }
-}
-class Bishop does Piece {
-  method pseudo-moves(square $from) {
-    gather for &left, &right X∘ &up, &down {
-      try loop (my $to = $from; $to = .($to); take $to) {}
-    }
+  method fen {
+    [
+      do for 8,7...1 -> $r {
+	do do for 'a'..'h' -> $c {
+	  my $piece = self.board{square::{"$c$r"}};
+	  $piece ?? $piece.symbol !! '1'
+	}.join
+	.subst(/1+/, { .chars })
+      }.join("/"),
+      $!turn eq white ?? 'w' !! 'b',
+      $!castling-rights,
+      $!en-passant.defined ?? $!en-passant !! '-',
+      $!half-move-clock,
+      $!full-move-number
+    ].join(' ')
   }
-}
-class Queen does Piece {
-  method pseudo-moves(square $from) {
-    gather for Bishop, Rook {
-      .take for .new.pseudo-moves($from);
-    }
-  }
-}
-class Knight does Piece {
-  method pseudo-moves(square $from) {
-    gather for (&left, &right) X (&up, &down) -> (&a, &b) {
-      for &a ∘ &a ∘ &b, &a ∘ &b ∘ &b {
-	try take .($from)
+  method ray(square $from, &direction) {
+    gather if self.board{$from} {
+      try loop (my $s = $from; $s = &direction($s); take $s) {
+	if self.board{$s} {
+	  if self.board{$s}.color ne self.board{$from}.color {
+	    take $s
+	  }
+	  last
+	}
       }
     }
   }
+  method pass returns ::?CLASS {
+    self.new: fen => self.fen.subst: /<<<[wb]>>>/, { $_ eq 'w' ?? 'b' !! 'w' }
+  }
+  method pseudo-legal-moves {
+    gather {
+      for self.board {
+	my ($from, $piece) = .kv;
+	next if $piece.color !== self.turn;
+	given $piece {
+	  when King {
+	    for &up, &down, &right, &left, |(&up, &down X∘ &left, &right) {
+	      try {
+		my $to = .($from);
+		if !self.board{$to} or self.board{$to}.color ne self.turn {
+		  take Move.new: :$from, :$to;
+		}
+	      }
+	    }
+	  }
+	  when Queen {
+	    for &up, &down, &right, &left, |(&up, &down X∘ &left, &right) -> &dir {
+	      take Move.new: :$from, :to($_) for self.ray($from, &dir);
+	    }
+	  }
+	  when Bishop {
+	    for &up, &down X∘ &left, &right -> &dir {
+	      take Move.new: :$from, :to($_) for self.ray($from, &dir);
+	    }
+	  }
+	  when Rook {
+	    for &up, &down, &right, &left -> &dir {
+	      take Move.new: :$from, :to($_) for self.ray($from, &dir);
+	    }
+	  }
+	  when Knight {
+	    for &up, &down X &left, &right -> (&a, &b) {
+	      for &a ∘ &a ∘ &b, &a ∘ &b ∘ &b {
+		try {
+		  my $to = .($from);
+		  if !self.board{$to} or self.board{$to}.color ne self.turn {
+		    take Move.new: :$from, :to(.($from))
+		  }
+		}
+	      }
+	    }
+	  }
+	  when Pawn {
+	    my (&forward, $start-rank, $sub-promotion-rank);
+	    if $piece.color == white {
+	      &forward = &up;
+	      $start-rank = 2;
+	      $sub-promotion-rank = 7;
+	    } else {
+	      &forward = &down;
+	      $start-rank = 7;
+	      $sub-promotion-rank = 2;
+	    }
+	    try {
+	      # moving forward one square
+	      my $to = &forward($from);
+	      unless self.board{$to} {
+		if $from ~~ /$sub-promotion-rank/ {
+		  for Queen, Rook, Bishop, Knight {
+		    take Move.new: :$from, :$to, :promotion(.new(:color(self.turn)));
+		  }
+		} else { take Move.new: :$from, :$to }
+	      }
+	    }
+	    if $from ~~ /$start-rank$/ {
+	      # moving forward two squares (special move)
+	      # this can never be a promotion
+	      # and this can never go off-board (so no need to catch errors)
+	      my $on = &forward($from);
+	      my $to = &forward($on);
+	      take Move.new: :$from, :$to unless self.board{$on} or self.board{$to};
+	    } 
+	    # capturing
+	    for &left, &right -> &direction {
+	      try {
+		my $to = &forward(&direction($from));
+		if self.board{$to} && self.board{$to}.color ne self.turn {
+		  if $from ~~ /$sub-promotion-rank$/ {
+		    for Queen, Rook, Bishop, Knight {
+		      take Move.new: :$from, :$to, :promotion(.new(:color(self.turn)));
+		    }
+		  } else { take Move.new: :$from, :$to }
+		}
+	      }
+	    }
+	  }
+	}
+      }
+    }
+  }
+  method legal-moves { self.pseudo-legal-moves.grep: {!.(self).pass.check} }
+  method check {
+    for self.pass.pseudo-legal-moves -> $move {
+      return True if self.board{$move.to} ~~ King;
+    }
+    return False
+  }
 }
 
-our constant startpos = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-
-our subset fen of Str where { Chess::FEN.parse($_) }
+class Move {
+  has square ($.from, $.to);
+  has Piece $.promotion;
+  method CALL-ME(Position $pos) {
+    given $pos.clone {
+      fail if !.board{$!from} or .board{$!from}.color ne .turn;
+      fail if .board{$!to} and .board{$!to}.color eq .turn;
+      .board{$!to} = .board{$!from};
+      .board{$!from}:delete;
+      .turn = .turn == white ?? black !! white;
+      .return
+    }
+  }
+  multi method new(Str $lan where /[<[a..h]><[1..8]>]**2(<[qrbn]>?)/) {
+    if $/[1] {
+      samewith
+	from => square::{$lan.substr: 0, 2},
+	to   => square::{$lan.substr: 2, 2},
+	promotion => %pieces{$/[1]} if $/[1];
+    } else {
+      samewith
+	from => square::{$lan.substr: 0, 2},
+	to   => square::{$lan.substr: 2, 2};
+    }
+  }
+  method gist { "$!from$!to" ~ ($!promotion ?? $!promotion.symbol.lc !! '') }
+  method SAN(Position $pos --> Str) {
+    given $pos.board{$.from} {
+      fail "It is not {.color}'s turn" if .color ne $pos.turn;
+      when Pawn  { .symbol ~ $.to }
+      default    { .symbol.uc ~ $.to }
+    }
+  }
+}
 
 sub show(Str $fen where Chess::FEN.parse($fen)) is export {
   if %*ENV<TERM> eq 'xterm-kitty' {
@@ -101,4 +282,4 @@ sub show(Str $fen where Chess::FEN.parse($fen)) is export {
   }
 }
 
-# vi: shiftwidth=2 nowrap
+# vi: shiftwidth=2 nowrap nu
