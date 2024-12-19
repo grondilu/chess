@@ -27,7 +27,7 @@ use Chess;
 show Chess::startpos;
 ```
 
-![Hopefully the code above should produce a nice representation of the starting position](https://i.imgur.com/lxE3vwZ.png)
+![Hopefully the code above should produce a nice representation of the starting position](https://i.imgur.com/1Ikce1q.png)
 
 This requires :
 
