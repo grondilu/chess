@@ -5,7 +5,7 @@ use Base64;
 
 enum color is export <black white>;
 
-enum square ('a'..'h' X~ 1..8);
+enum square is export ('a'..'h' X~ 1..8);
 sub row   (square $s --> UInt) { +$s.substr(1,1) }
 sub column(square $s --> Str)  { ~$s.substr(0,1) }
 
@@ -16,18 +16,19 @@ sub  down(square $s where /<[2..8]>/) is export { return square::{$s.trans(2..8 
 
 class Position {...}
 class Move {...}
+role Capture {}
 
 role Piece[Str $symbol] {
   has color $.color;
   method symbol returns Str { $!color eq white ?? $symbol.uc !! $symbol }
 }
 
-class King   does Piece['k'] {}
-class Rook   does Piece['r'] {}
-class Bishop does Piece['b'] {}
-class Queen  does Piece['q'] {}
-class Knight does Piece['n'] {}
-class Pawn   does Piece['p'] {}
+class Rook   does Piece['r'] { method moves { &up, &left, &down, &right }   }
+class Bishop does Piece['b'] { method moves { &up, &down X∘ &left, &right } }
+class King   does Piece['k'] { method moves { (Rook, Bishop)».moves().flat } }
+class Queen  does Piece['q'] { method moves { King.moves() } }
+class Knight does Piece['n'] { method moves { flat do for &left, &right X &up, &down -> (&a, &b) { &a ∘ &b ∘ &b, &a ∘ &a ∘ &b } } }
+class Pawn   does Piece['p'] { method moves { $!color == white ?? &up !! &down } }
 
 my constant %pieces = 
   k => King,
@@ -107,40 +108,25 @@ class Position {
 	my ($from, $piece) = .kv;
 	next if $piece.color !== self.turn;
 	given $piece {
-	  when King {
-	    for &up, &down, &right, &left, |(&up, &down X∘ &left, &right) {
+	  when King|Knight {
+	    for .moves {
 	      try {
 		my $to = .($from);
-		if !self.board{$to} or self.board{$to}.color ne self.turn {
-		  take Move.new: :$from, :$to;
+		my $move = Move.new: :$from, :$to;
+		if !self.board{$to} {
+		  take $move;
+		} elsif self.board{$to}.color ne self.turn {
+		  take $move but Capture;
 		}
 	      }
 	    }
 	  }
-	  when Queen {
-	    for &up, &down, &right, &left, |(&up, &down X∘ &left, &right) -> &dir {
-	      take Move.new: :$from, :to($_) for self.ray($from, &dir);
-	    }
-	  }
-	  when Bishop {
-	    for &up, &down X∘ &left, &right -> &dir {
-	      take Move.new: :$from, :to($_) for self.ray($from, &dir);
-	    }
-	  }
-	  when Rook {
-	    for &up, &down, &right, &left -> &dir {
-	      take Move.new: :$from, :to($_) for self.ray($from, &dir);
-	    }
-	  }
-	  when Knight {
-	    for &up, &down X &left, &right -> (&a, &b) {
-	      for &a ∘ &a ∘ &b, &a ∘ &b ∘ &b {
-		try {
-		  my $to = .($from);
-		  if !self.board{$to} or self.board{$to}.color ne self.turn {
-		    take Move.new: :$from, :to(.($from))
-		  }
-		}
+	  when Queen|Bishop|Rook {
+	    for .moves -> &dir {
+	      for self.ray($from, &dir) -> $to {
+	        my $move = Move.new: :$from, :$to;
+		$move does Capture if self.board{$to};
+		take $move;
 	      }
 	    }
 	  }
@@ -178,12 +164,14 @@ class Position {
 	    for &left, &right -> &direction {
 	      try {
 		my $to = &forward(&direction($from));
+		my $move;
 		if self.board{$to} && self.board{$to}.color ne self.turn {
 		  if $from ~~ /$sub-promotion-rank$/ {
 		    for Queen, Rook, Bishop, Knight {
-		      take Move.new: :$from, :$to, :promotion(.new(:color(self.turn)));
+		      $move = Move.new: :$from, :$to, :promotion(.new(:color(self.turn)));
 		    }
-		  } else { take Move.new: :$from, :$to }
+		  } else { $move = Move.new: :$from, :$to }
+		  take $move but Capture;
 		}
 	      }
 	    }
@@ -192,12 +180,22 @@ class Position {
       }
     }
   }
-  method legal-moves { self.pseudo-legal-moves.grep: {!.(self).pass.check} }
-  method check {
-    for self.pass.pseudo-legal-moves -> $move {
-      return True if self.board{$move.to} ~~ King;
-    }
-    return False
+  method attacks(square $s) {
+    flat self.pseudo-legal-moves.grep({ .to == $s }),
+      # pawn attacks
+      square.pick(*)
+      .grep({self.board{$_}})
+      .grep({self.board{$_}.color == self.turn && self.board{$_} ~~ Pawn })
+      .map(-> $from { gather for &left, &right { try take Move.new: :$from, :to((&$_ ∘ self.board{$from}.moves())($from)) } })
+      .flat
+  }
+  method legal-moves {
+    self.pseudo-legal-moves.grep:
+    {!.(self).pass.check}
+  }
+  method check returns Bool {
+    self.attacks:
+      square.pick(*).first: { $_ ~~ King and .color == self.turn given self.board{$_} }
   }
 }
 
@@ -259,7 +257,7 @@ sub show(Str $fen where Chess::FEN.parse($fen)) is export {
       }
       take "basenc --base64 -w4096"
     }.join(" |\n");
-    my @payload = qqx{$shell-command}.lines;
+    my @payload = qqx[$shell-command].lines;
     say @payload > 1 ??
     [
       "\e_Ga=T,f=100,t=d,m=1;" ~ @payload.head ~ "\e\\",
