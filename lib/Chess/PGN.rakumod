@@ -6,8 +6,6 @@ enum Turn <WHITE BLACK>;
 
 rule game {
   :my Int $*move-number;
-  :my Turn $*turn = WHITE;
-  :my @*has-castled;
   <info>* <move>+ <adjudication>?
   <?{ [&&] $<move>»<move-number>».made Z== 1..* }>
 }
@@ -29,7 +27,6 @@ token half-move {
 	| <castle>
 	| <promotion>
     ]< + ++ # >?<annotation>?
-    { $*turn = $*turn == WHITE ?? BLACK !! WHITE }
 }
 token annotation { < ?? ? !? ?! ! !! > }
 token nag { '$'<.digit>+ }
@@ -42,11 +39,7 @@ token pawn-moves { <square> }
 token pawn-takes { <file>'x'<square>'ep'? }
 regex piece-moves { <piece><square> }
 token piece-takes { <piece>'x'<square> }
-token castle     {
-  [ 'O-O' '-O'? | 'o-o' '-o'? ]
-  <?{ $*move-number > 4 }>
-  <?{ @*has-castled[$*turn]++ < 1 }>
-}
+token castle     { [ 'O-O' '-O'? | 'o-o' '-o'? ] }
 token promotion  { [ <pawn-moves> | <pawn-takes> ]'='<piece> }
 
 token disambiguation { <file> | <rank> }
