@@ -44,3 +44,4 @@ This requires :
  - [x] make Board image internally, not relying on lichess
  - [ ] opening and tactics trainer
  - [ ] game database management
+ - [ ] translate [Chess.js](https://github.com/jhlywa/chess.js/tree/master)
