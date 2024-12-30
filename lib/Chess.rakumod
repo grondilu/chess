@@ -7,7 +7,7 @@ enum color is export <black white>;
 
 enum square is export ('a'..'h' X~ 1..8);
 sub row   (square $s --> UInt) { +$s.substr(1,1) }
-sub column(square $s --> Str)  { ~$s.substr(0,1) }
+sub file(square $s --> Str)  { ~$s.substr(0,1) }
 
 sub  left(square $s where /<[b..h]>/) is export { return square::{$s.trans('b'..'h' => 'a'..'g')}; }
 sub right(square $s where /<[a..g]>/) is export { return square::{$s.trans('a'..'g' => 'b'..'h')}; }
@@ -16,10 +16,15 @@ sub  down(square $s where /<[2..8]>/) is export { return square::{$s.trans(2..8 
 
 class Position {...}
 class Move {...}
-role Capture {}
+
+role _Capture { method gist { callsame().subst(/(<[a..h]><[1..8]>)$/, { 'x' ~ .[0] }) } }
+role Castle {}
+role LongCastle  does Castle { method gist { 'O-O-O' } }
+role ShortCastle does Castle { method gist { 'O-O'   } }
 
 role Piece[Str $symbol] {
   has color $.color;
+  method moves {...}
   method symbol returns Str { $!color eq white ?? $symbol.uc !! $symbol }
 }
 
@@ -71,6 +76,8 @@ class Position {
 	method full-move-number($/) { $pos.full-move-number = +$/ }
       }
   }
+  method forward   { self.turn == white ?? &up !! &down }
+  method backwards { self.turn == black ?? &up !! &down }
   method fen {
     [
       do for 8,7...1 -> $r {
@@ -105,34 +112,49 @@ class Position {
   method pseudo-legal-moves {
     gather {
       for self.board {
-	my ($from, $piece) = .kv;
-	next if $piece.color !== self.turn;
-	given $piece {
+	my ($from, $moving-piece) = .kv;
+	next if $moving-piece.color !== self.turn;
+	given $moving-piece {
 	  when King|Knight {
 	    for .moves {
 	      try {
 		my $to = .($from);
-		my $move = Move.new: :$from, :$to;
+		my $move = Move.new(:$from, :$to, :$moving-piece);
 		if !self.board{$to} {
 		  take $move;
 		} elsif self.board{$to}.color ne self.turn {
-		  take $move but Capture;
+		  take $move but _Capture;
 		}
 	      }
+	    }
+	    proceed;
+	  }
+	  when King {
+	    # Castling
+	    succeed unless file($from) eq 'e' and (
+	      self.turn == white && self.castling-rights ~~ /<[KQ]>/ or
+	      self.turn == black && self.castling-rights ~~ /<[kq]>/
+	    );
+	    for &left, &right Z LongCastle, ShortCastle -> (&direction, ::castle) {
+	      my $to = direction($from);
+	      next if self.board{$to};
+	      $to = direction($to);
+	      next if self.board{$to};
+	      take Move.new(:$from, :$to, :$moving-piece) but castle;
 	    }
 	  }
 	  when Queen|Bishop|Rook {
 	    for .moves -> &dir {
 	      for self.ray($from, &dir) -> $to {
-	        my $move = Move.new: :$from, :$to;
-		$move does Capture if self.board{$to};
+	        my $move = Move.new: :$from, :$to, :$moving-piece;
+		$move does _Capture if self.board{$to};
 		take $move;
 	      }
 	    }
 	  }
 	  when Pawn {
 	    my (&forward, $start-rank, $sub-promotion-rank);
-	    if $piece.color == white {
+	    if .color == white {
 	      &forward = &up;
 	      $start-rank = 2;
 	      $sub-promotion-rank = 7;
@@ -147,9 +169,9 @@ class Position {
 	      unless self.board{$to} {
 		if $from ~~ /$sub-promotion-rank/ {
 		  for Queen, Rook, Bishop, Knight {
-		    take Move.new: :$from, :$to, :promotion(.new(:color(self.turn)));
+		    take Move.new: :$from, :$to, :promotion(.new(:color(self.turn))), :$moving-piece;
 		  }
-		} else { take Move.new: :$from, :$to }
+		} else { take Move.new: :$from, :$to, :$moving-piece }
 	      }
 	    }
 	    if $from ~~ /$start-rank$/ {
@@ -158,7 +180,7 @@ class Position {
 	      # and this can never go off-board (so no need to catch errors)
 	      my $on = &forward($from);
 	      my $to = &forward($on);
-	      take Move.new: :$from, :$to unless self.board{$on} or self.board{$to};
+	      take Move.new: :$from, :$to, :$moving-piece unless self.board{$on} or self.board{$to};
 	    } 
 	    # capturing
 	    for &left, &right -> &direction {
@@ -168,10 +190,10 @@ class Position {
 		if self.board{$to} && self.board{$to}.color ne self.turn {
 		  if $from ~~ /$sub-promotion-rank$/ {
 		    for Queen, Rook, Bishop, Knight {
-		      $move = Move.new: :$from, :$to, :promotion(.new(:color(self.turn)));
+		      $move = Move.new: :$from, :$to, :$moving-piece, :promotion(.new(:color(self.turn)));
 		    }
-		  } else { $move = Move.new: :$from, :$to }
-		  take $move but Capture;
+		  } else { $move = Move.new: :$from, :$to, :$moving-piece }
+		  take $move but _Capture;
 		}
 	      }
 	    }
@@ -181,27 +203,64 @@ class Position {
     }
   }
   method attacks(square $s) {
-    flat self.pseudo-legal-moves.grep({ .to == $s }),
-      # pawn attacks
-      square.pick(*)
-      .grep({self.board{$_}})
-      .grep({self.board{$_}.color == self.turn && self.board{$_} ~~ Pawn })
-      .map(-> $from { gather for &left, &right { try take Move.new: :$from, :to((&$_ ∘ self.board{$from}.moves())($from)) } })
-      .flat
+    given self.clone {
+      .board{$s} = Pawn.new: color => .pass.turn;
+      .pseudo-legal-moves.grep({ .to == $s })
+    }
   }
   method legal-moves {
-    self.pseudo-legal-moves.grep:
-    {!.(self).pass.check}
+    gather {
+      self.pseudo-legal-moves
+
+      # checks must be parried
+      .grep({!.(self).pass.check})
+      # cannot castle out of a check
+      .grep({ not $_ ~~ Castle && self.check })
+
+      .classify({ self.board{.from}.symbol.uc ~ .to })
+      .map(
+	{
+	  my @moves = .value.list;
+	  role SANMove[Piece $piece] {
+	    method gist {
+	      callsame()
+	      .subst(
+		/^(<[a..h]>)<[1..8]>/,
+		{
+		  $piece ~~ Pawn ?? 
+		  (self ~~ _Capture ?? ~.[0] !! '') !! $piece.symbol.uc
+		}
+	      )
+	    }
+	  }
+	  $_ does SANMove[self.board{@moves.pick.from}] for @moves;
+	  if @moves == 1 { take @moves.pick }
+	  else {
+	    role DisambiguatedMove[Str $disambiguation] {
+	      method gist { callsame().subst(/^(<[KQRNB]>)/, { "$_[0]$disambiguation" }) }
+	    }
+	    if @moves.classify({file(.from)}).values.map(*.elems).all == 1 {
+	      take $_ but DisambiguatedMove[file(.from)] for @moves
+	    } elsif @moves.classify({row(.from)}).values.map(*.elems).all == 1 {
+	      take $_ but DisambiguatedMove[~row(.from)] for @moves
+	    } else {
+	      take $_ but DisambiguatedMove[file(.from) ~ row(.from)] for @moves
+	    }
+	  }
+	}
+      )
+    }
   }
   method check returns Bool {
-    self.attacks:
+    so self.pass.attacks:
       square.pick(*).first: { $_ ~~ King and .color == self.turn given self.board{$_} }
   }
+  method checkmate returns Bool { self.check and self.legal-moves == 0 }
 }
 
 class Move {
   has square ($.from, $.to);
-  has Piece $.promotion;
+  has Piece ($.promotion, $.moving-piece);
   method CALL-ME(Position $pos) {
     given $pos.clone {
       fail if !.board{$!from} or .board{$!from}.color ne .turn;
@@ -209,6 +268,7 @@ class Move {
       .board{$!to} = .board{$!from};
       .board{$!from}:delete;
       .turn = .turn == white ?? black !! white;
+      .full-move-number++ if .turn == black;
       .return
     }
   }
@@ -223,6 +283,9 @@ class Move {
 	from => square::{$lan.substr: 0, 2},
 	to   => square::{$lan.substr: 2, 2};
     }
+  }
+  multi method new(Str $san where /^^<Chess::PGN::half-move>$$/, Position :$pos) {
+    ...
   }
   method gist { "$!from$!to" ~ ($!promotion ?? $!promotion.symbol.lc !! '') }
   method SAN(Position $pos --> Str) {
@@ -280,4 +343,32 @@ sub show(Str $fen where Chess::FEN.parse($fen)) is export {
   }
 }
 
+class Game {
+  has Move @.moves;
+  has Position $.startpos .= new: fen => startpos;
+
+  method half-move($/) {
+  }
+  method pawn-moves($/) {
+    my $position = (self.startpos, |@!moves).reduce({ $^b($^a) });
+    my $to = square::{$<square>};
+    my $file = file($to);
+    @!moves.push:
+      Move.new: $position.board.pairs
+      .grep({ file(.key) eq $file and .value ~~ Pawn and .value.color == $position.turn})
+      .max({ ($position.turn == white ?? +1 !! -1)*row(.key) })
+      .key ~ $to;
+  }
+  method pawn-takes($/) {
+    (self.startpos, |@!moves).reduce({ $^b($^a) })
+      .attacks(square::{$<square>})
+      .first({ file(.from) eq $<file> })
+  }
+  method castle($/) {
+    my $c = ~$/ ~~ / <[oO]> ** 3 % '-' / ?? 'c' !! 'g';
+    my $r = @!moves %% 2 ?? 1 !! 8;
+    @!moves.push:
+      Move.new(:from("e$r"), :to("$c$r")) but Castle;
+  }
+}
 # vi: shiftwidth=2 nowrap nu
