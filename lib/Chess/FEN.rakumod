@@ -3,8 +3,8 @@ unit grammar Chess::FEN;
 rule TOP { <board> <active-color> <castling> <en-passant> <half-move-clock> <full-move-number> }
 
 token board { <rank> ** 8 % '/' }
-token rank { <symbol> ** 1..8 }
-token symbol { <piece> | <empty-squares> }
+token rank { <symbol> ** 1..8 <?{ $<symbol>».made.sum == 8 }> }
+token symbol { <piece> { make 1 } | <empty-squares> { make +$/ } }
 token active-color { w | b }
 token castling { '-' | < K k Q q > ** 1..4 }
 token en-passant { '-' | <file>< 3 6 > }
