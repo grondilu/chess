@@ -24,7 +24,7 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 ```raku
 use Chess;
-show Chess::startpos;
+show startpos;
 ```
 
 ![Hopefully the code above should produce a nice representation of the starting position](https://i.imgur.com/1Ikce1q.png)
