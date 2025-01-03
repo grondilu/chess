@@ -3,37 +3,53 @@ use Chess::PGN;
 use Chess::FEN;
 use Base64;
 
-enum color is export <black white>;
+enum color <black white>;
 
-enum square is export ('a'..'h' X~ 1..8);
+enum square ('a'..'h' X~ 1..8);
 sub row   (square $s --> UInt) { +$s.substr(1,1) }
 sub file(square $s --> Str)  { ~$s.substr(0,1) }
 
-sub  left(square $s where /<[b..h]>/) is export { return square::{$s.trans('b'..'h' => 'a'..'g')}; }
-sub right(square $s where /<[a..g]>/) is export { return square::{$s.trans('a'..'g' => 'b'..'h')}; }
-sub    up(square $s where /<[1..7]>/) is export { return square::{$s.trans(1..7     => 2..8    )}; }
-sub  down(square $s where /<[2..8]>/) is export { return square::{$s.trans(2..8     => 1..7    )}; }
+sub  left(square $s where /<[b..h]>/) { return square::{$s.trans('b'..'h' => 'a'..'g')}; }
+sub right(square $s where /<[a..g]>/) { return square::{$s.trans('a'..'g' => 'b'..'h')}; }
+sub    up(square $s where /<[1..7]>/) { return square::{$s.trans(1..7     => 2..8    )}; }
+sub  down(square $s where /<[2..8]>/) { return square::{$s.trans(2..8     => 1..7    )}; }
 
 class Position {...}
 class Move {...}
-
-role _Capture { method gist { callsame().subst(/(<[a..h]><[1..8]>)$/, { 'x' ~ .[0] }) } }
-role Castle {}
-role LongCastle  does Castle { method gist { 'O-O-O' } }
-role ShortCastle does Castle { method gist { 'O-O'   } }
 
 role Piece[Str $symbol] {
   has color $.color;
   method moves {...}
   method symbol returns Str { $!color eq white ?? $symbol.uc !! $symbol }
 }
-
 class Rook   does Piece['r'] { method moves { &up, &left, &down, &right }   }
 class Bishop does Piece['b'] { method moves { &up, &down X∘ &left, &right } }
 class King   does Piece['k'] { method moves { (Rook, Bishop)».moves().flat } }
 class Queen  does Piece['q'] { method moves { King.moves() } }
 class Knight does Piece['n'] { method moves { flat do for &left, &right X &up, &down -> (&a, &b) { &a ∘ &b ∘ &b, &a ∘ &a ∘ &b } } }
 class Pawn   does Piece['p'] { method moves { $!color == white ?? &up !! &down } }
+
+
+# watch out : 'Capture' is a rakudo core class
+role _Capture { method gist { callsame().subst(/(<[a..h]><[1..8]>)$/, { 'x' ~ .[0] }) } }
+role Castle {}
+role LongCastle  does Castle { method gist { 'O-O-O' } }
+role ShortCastle does Castle { method gist { 'O-O'   } }
+role SANMove[Piece $piece] {
+  method gist {
+    callsame()
+    .subst(
+      /^(<[a..h]>)<[1..8]>/,
+      {
+	$piece ~~ Pawn ?? (self ~~ _Capture ?? ~.[0] !! '') !! $piece.symbol.uc
+      }
+    )
+  }
+}
+role DisambiguatedMove[Str $disambiguation] {
+  method gist { callsame().subst(/^(<[KQRNB]>)/, { "$_[0]$disambiguation" }) }
+}
+role Check    { method gist { callsame() ~ '+' } }
 
 my constant %pieces = 
   k => King,
@@ -45,7 +61,7 @@ my constant %pieces =
 ;
 
 our subset fen of Str where { Chess::FEN.parse($_) }
-our constant startpos = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+our constant startpos is export = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 class Position {
   has Piece %.board{square};
@@ -85,7 +101,7 @@ class Position {
 	  my $piece = self.board{square::{"$c$r"}};
 	  $piece ?? $piece.symbol !! '1'
 	}.join
-	.subst(/1+/, { .chars })
+	.subst(/1+/, { .chars }, :g)
       }.join("/"),
       $!turn eq white ?? 'w' !! 'b',
       $!castling-rights,
@@ -98,9 +114,7 @@ class Position {
     gather if self.board{$from} {
       try loop (my $s = $from; $s = &direction($s); take $s) {
 	if self.board{$s} {
-	  if self.board{$s}.color ne self.board{$from}.color {
-	    take $s
-	  }
+	  take $s if self.board{$s}.color ne self.board{$from}.color;
 	  last
 	}
       }
@@ -221,24 +235,9 @@ class Position {
       .map(
 	{
 	  my @moves = .value.list;
-	  role SANMove[Piece $piece] {
-	    method gist {
-	      callsame()
-	      .subst(
-		/^(<[a..h]>)<[1..8]>/,
-		{
-		  $piece ~~ Pawn ?? 
-		  (self ~~ _Capture ?? ~.[0] !! '') !! $piece.symbol.uc
-		}
-	      )
-	    }
-	  }
 	  $_ does SANMove[self.board{@moves.pick.from}] for @moves;
 	  if @moves == 1 { take @moves.pick }
 	  else {
-	    role DisambiguatedMove[Str $disambiguation] {
-	      method gist { callsame().subst(/^(<[KQRNB]>)/, { "$_[0]$disambiguation" }) }
-	    }
 	    if @moves.classify({file(.from)}).values.map(*.elems).all == 1 {
 	      take $_ but DisambiguatedMove[file(.from)] for @moves
 	    } elsif @moves.classify({row(.from)}).values.map(*.elems).all == 1 {
@@ -249,7 +248,7 @@ class Position {
 	  }
 	}
       )
-    }
+    }.map({ .(self).check ?? $_ but Check !! $_ })
   }
   method check returns Bool {
     so self.pass.attacks:
@@ -297,7 +296,8 @@ class Move {
   }
 }
 
-sub show(Str $fen where Chess::FEN.parse($fen)) is export {
+sub show(fen $fen) is export {
+  Chess::FEN.parse: $fen;
   if %*ENV<TERM> eq 'xterm-kitty' {
     use Chess::Graphics;
     
@@ -343,32 +343,12 @@ sub show(Str $fen where Chess::FEN.parse($fen)) is export {
   }
 }
 
-class Game {
-  has Move @.moves;
-  has Position $.startpos .= new: fen => startpos;
-
-  method half-move($/) {
-  }
-  method pawn-moves($/) {
-    my $position = (self.startpos, |@!moves).reduce({ $^b($^a) });
-    my $to = square::{$<square>};
-    my $file = file($to);
-    @!moves.push:
-      Move.new: $position.board.pairs
-      .grep({ file(.key) eq $file and .value ~~ Pawn and .value.color == $position.turn})
-      .max({ ($position.turn == white ?? +1 !! -1)*row(.key) })
-      .key ~ $to;
-  }
-  method pawn-takes($/) {
-    (self.startpos, |@!moves).reduce({ $^b($^a) })
-      .attacks(square::{$<square>})
-      .first({ file(.from) eq $<file> })
-  }
-  method castle($/) {
-    my $c = ~$/ ~~ / <[oO]> ** 3 % '-' / ?? 'c' !! 'g';
-    my $r = @!moves %% 2 ?? 1 !! 8;
-    @!moves.push:
-      Move.new(:from("e$r"), :to("$c$r")) but Castle;
-  }
+multi infix:<*>($fen, Str $move where /^^<Chess::PGN::half-move>$$/) is export {
+  my Position $position .= new: :$fen;
+  fail "illegal move" unless my $actual-move = $position.legal-moves.first: { .gist eq $move };
+  $actual-move($position).fen;
 }
+
+sub legal-moves(fen $fen) is export { Position.new(:$fen).legal-moves }
+
 # vi: shiftwidth=2 nowrap nu

@@ -2,7 +2,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.3.1",
+    "version" : "0.3.3",
     "description" : "Chess-related stuff in raku.",
     "author" : "L. Grondin",
     "build-depends" : [ ],
@@ -11,9 +11,10 @@
     ],
     "depends" : [ ],
     "provides" : {
-        "Chess::FEN" : "lib/Chess/FEN.rakumod",
-        "Chess::PGN" : "lib/Chess/PGN.rakumod",
-        "Chess"      : "lib/Chess.rakumod"
+        "Chess::FEN"      : "lib/Chess/FEN.rakumod",
+        "Chess::PGN"      : "lib/Chess/PGN.rakumod",
+	"Chess::Graphics" : "lib/Chess/Graphics.rakumod",
+        "Chess"           : "lib/Chess.rakumod"
     },
     "source-url" : "git://github.com/grondilu/chess.git"
 }
