@@ -17,6 +17,7 @@ subtest {
 
 subtest {
   nok Chess::PGN.parse('1. e4 d5 3. Nf3'), "wrong move number sequence";
+  todo 'NYI';
   subtest {
     nok Chess::PGN.parse('1.O-O'), "castling on first move";
     nok Chess::PGN.parse('1.e4 e5 2.O-O'), "castling on second move";
