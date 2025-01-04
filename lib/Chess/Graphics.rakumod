@@ -28,27 +28,9 @@ our constant checkerboard = encode-base64 do given run <magick - png:->, :in, :o
   .out.slurp(:bin);
 }, :str;
 
-our constant %pieces = do for 
-  # https://commons.wikimedia.org/wiki/Category:PNG_chess_pieces/Standard_transparent
-  'https://upload.wikimedia.org/wikipedia/commons/' X~ <
-    3/3b/Chess_klt60.png
-    4/49/Chess_qlt60.png
-    5/5c/Chess_rlt60.png
-    9/9b/Chess_blt60.png
-    2/28/Chess_nlt60.png
-    0/04/Chess_plt60.png
-    e/e3/Chess_kdt60.png
-    a/af/Chess_qdt60.png
-    a/a0/Chess_rdt60.png
-    8/81/Chess_bdt60.png
-    f/f1/Chess_ndt60.png
-    c/cd/Chess_pdt60.png
-  > {
-  /_(<[kqrbnp]>)(<[ld]>)/;
-  my $name = ($/[1] eq 'l' ?? *.uc !! ~*)($/[0]);
-  given run «wget $_ -q -O -», :out {
-    $name => encode-base64 .out.slurp(:bin), :str;
-  }
+# https://commons.wikimedia.org/wiki/Category:PNG_chess_pieces/Standard_transparent
+our constant %pieces = gather for <k q r b n p> {
+    take $_ => encode-base64 qq{images/$_.png}.IO.slurp(:bin), :str for .lc, .uc
 }
 
 # vim: nowrap shiftwidth=2
