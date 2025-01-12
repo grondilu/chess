@@ -9,7 +9,7 @@ rule game {
 
 rule info { '[' ~ ']' [ <tag> <string> ] }
 token tag { <.alpha>+ }
-token string { '"' ~ '"' .+? }
+rule string { '"' ~ '"' <print>* }
 
 rule move {
   <move-number> [ <half-move> <nag> *  <comment> * ] ** 1..2
