@@ -3,8 +3,8 @@ unit grammar Chess::PGN;
 rule TOP { ^ <game>+ $ }
 
 rule game {
-	<info>* <move>+ <adjudication>?
-	<?{ [&&] $<move>»<move-number>».made Z== 1..* }>
+  <info>* <move>+ <adjudication>?
+  <?{ [&&] $<move>»<move-number>».made Z== 1..* }>
 }
 
 rule info { '[' ~ ']' [ <tag> <string> ] }
@@ -52,3 +52,6 @@ regex piece { <[KQRBN]><disambiguation>? }
 token rank  { <[1..8]> }
 token file  { <[a..h]> }
 token square { <file> <rank> }
+
+
+# vi: shiftwidth=2
