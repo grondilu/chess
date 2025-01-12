@@ -1,10 +1,10 @@
 unit grammar Chess::PGN;
 
-rule TOP { ^ <game>+ % [^^$$] $ }
+rule TOP { ^ <game>+ $ }
 
 rule game {
-  <info>* <move>+ <adjudication>?
-  <?{ [&&] $<move>»<move-number>».made Z== 1..* }>
+	<info>* <move>+ <adjudication>?
+	<?{ [&&] $<move>»<move-number>».made Z== 1..* }>
 }
 
 rule info { '[' ~ ']' [ <tag> <string> ] }
