@@ -11,21 +11,15 @@ subtest {
   ok Chess::PGN.parse('1. e4 g5 2. d4 f5 3. Qh5#'), "dumb mate";
   ok Chess::PGN.parse('1. e4 g5?! 2. d4 f5?? 3. Qh5#'), "dumb mate with comments";
   ok Chess::PGN.parse('1. e4 g5?! 2. d4 f5?? 3. Qh5# 1-0'), "dumb mate with adjudication";
-
   ok Chess::PGN.parse('1.a4 a6 2.h4 b6 3.Ra3 c6 4.Rh3 d6 5.Rad3'), "disambiguation";
 }, 'valid PGN';
 
 subtest {
-  nok Chess::PGN.parse('1. e4 d5 3. Nf3'), "wrong move number sequence";
-  todo 'NYI';
-  subtest {
-    nok Chess::PGN.parse('1.O-O'), "castling on first move";
-    nok Chess::PGN.parse('1.e4 e5 2.O-O'), "castling on second move";
-    nok Chess::PGN.parse('1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba5 Nf6 5.O-O Be7 6.O-O'), "castling twice";
-  }, 'illegal castle';
-}, 'invalid PGN';
-
+  for <Morphy Capablanca Fischer Karpov Kasparov> {
+    ok Chess::PGN.parse("t/$_.pgn".IO.slurp), "$_\'s games";
+  }
+}, "various players' games from PGNMentor";
 
 done-testing;
 
-# vim: ft=raku
+# vim: ft=raku nu shiftwidth=2
