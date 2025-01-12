@@ -1,11 +1,8 @@
 unit grammar Chess::PGN;
 
-rule TOP { ^^ <game>+? $$ }
-
-enum Turn <WHITE BLACK>;
+rule TOP { ^ <game>+ % [^^$$] $ }
 
 rule game {
-  :my Int $*move-number;
   <info>* <move>+ <adjudication>?
   <?{ [&&] $<move>»<move-number>».made Z== 1..* }>
 }
@@ -15,8 +12,7 @@ token tag { <.alpha>+ }
 token string { '"' ~ '"' .+? }
 
 rule move {
-  <move-number> { $*move-number = $<move-number>.made }
-  [ <half-move> <nag> *  <comment> * ] ** 1..2
+  <move-number> [ <half-move> <nag> *  <comment> * ] ** 1..2
 }
 token half-move {
     [
