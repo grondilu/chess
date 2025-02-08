@@ -31,25 +31,10 @@ class Pawn   does Piece['p'] { method moves { $!color == white ?? &up !! &down }
 
 
 # watch out : 'Capture' is a rakudo core class
-role _Capture { method gist { callsame().subst(/(<[a..h]><[1..8]>)$/, { 'x' ~ .[0] }) } }
+role _Capture { }
 role Castle {}
 role LongCastle  does Castle { method gist { 'O-O-O' } }
 role ShortCastle does Castle { method gist { 'O-O'   } }
-role SANMove[Piece $piece] {
-  method gist {
-    callsame()
-    .subst(
-      /^(<[a..h]>)<[1..8]>/,
-      {
-	$piece ~~ Pawn ?? (self ~~ _Capture ?? ~.[0] !! '') !! $piece.symbol.uc
-      }
-    )
-  }
-}
-role DisambiguatedMove[Str $disambiguation] {
-  method gist { callsame().subst(/^(<[KQRNB]>)/, { "$_[0]$disambiguation" }) }
-}
-role Check    { method gist { callsame() ~ '+' } }
 
 my constant %pieces = 
   k => King,
@@ -111,14 +96,17 @@ class Position {
     ].join(' ')
   }
   method ray(square $from, &direction) {
-    gather if self.board{$from} {
-      try loop (my $s = $from; $s = &direction($s); take $s) {
+    if self.board{$from} {
+      my $s = $from;
+      gather loop {
+	try $s = &direction($s);
+	last if $!;
 	if self.board{$s} {
 	  take $s if self.board{$s}.color ne self.board{$from}.color;
 	  last
-	}
+	} else { take $s }
       }
-    }
+    } else { () }
   }
   method pass returns ::?CLASS {
     self.new: fen => self.fen.subst: /<<<[wb]>>>/, { $_ eq 'w' ?? 'b' !! 'w' }
@@ -205,9 +193,15 @@ class Position {
 		  if $from ~~ /$sub-promotion-rank$/ {
 		    for Queen, Rook, Bishop, Knight {
 		      $move = Move.new: :$from, :$to, :$moving-piece, :promotion(.new(:color(self.turn)));
+		      take $move but _Capture;
 		    }
-		  } else { $move = Move.new: :$from, :$to, :$moving-piece }
-		  take $move but _Capture;
+		  } else {
+		    $move = Move.new: :$from, :$to, :$moving-piece;
+		    take $move but _Capture;
+		  }
+		} elsif $to == self.en-passant {
+		  $move = Move.new: :$from, :$to, :$moving-piece;
+		  take $move but _Capture
 		}
 	      }
 	    }
@@ -223,32 +217,13 @@ class Position {
     }
   }
   method legal-moves {
-    gather {
+    (state %){self.fen} //= Array.new:
       self.pseudo-legal-moves
 
       # checks must be parried
       .grep({!.(self).pass.check})
       # cannot castle out of a check
       .grep({ not $_ ~~ Castle && self.check })
-
-      .classify({ self.board{.from}.symbol.uc ~ .to })
-      .map(
-	{
-	  my @moves = .value.list;
-	  $_ does SANMove[self.board{@moves.pick.from}] for @moves;
-	  if @moves == 1 { take @moves.pick }
-	  else {
-	    if @moves.classify({file(.from)}).values.map(*.elems).all == 1 {
-	      take $_ but DisambiguatedMove[file(.from)] for @moves
-	    } elsif @moves.classify({row(.from)}).values.map(*.elems).all == 1 {
-	      take $_ but DisambiguatedMove[~row(.from)] for @moves
-	    } else {
-	      take $_ but DisambiguatedMove[file(.from) ~ row(.from)] for @moves
-	    }
-	  }
-	}
-      )
-    }.map({ .(self).check ?? $_ but Check !! $_ })
   }
   method check returns Bool {
     so self.pass.attacks:
@@ -266,8 +241,21 @@ class Move {
       fail if .board{$!to} and .board{$!to}.color eq .turn;
       .board{$!to} = .board{$!from};
       .board{$!from}:delete;
-      .turn = .turn == white ?? black !! white;
+      if self ~~ Castle {
+	my $row = .turn eq 'white' ?? 1 !! 8;
+	if (self ~~ ShortCastle) {
+	  .board{square::{"f$row"}} = .board{square::{"h$row"}}:delete;
+	} elsif (self ~~ LongCastle) {
+	  .board{square::{"d$row"}} = .board{square::{"a$row"}}:delete;
+	} else { die "unexpected castling type" }
+      }	elsif .en-passant && .en-passant == $!to {
+	.board{.backwards.(.en-passant)}:delete;
+      }
+      if $!promotion.defined {
+	.board{$!to} = $!promotion;
+      }
       .full-move-number++ if .turn == black;
+      .turn = .turn == white ?? black !! white;
       .return
     }
   }
@@ -287,13 +275,6 @@ class Move {
     ...
   }
   method gist { "$!from$!to" ~ ($!promotion ?? $!promotion.symbol.lc !! '') }
-  method SAN(Position $pos --> Str) {
-    given $pos.board{$.from} {
-      fail "It is not {.color}'s turn" if .color ne $pos.turn;
-      when Pawn  { .symbol ~ $.to }
-      default    { .symbol.uc ~ $.to }
-    }
-  }
 }
 
 sub show(fen $fen) is export {
@@ -343,9 +324,46 @@ sub show(fen $fen) is export {
   }
 }
 
-multi infix:<*>($fen, Str $move where /^^<Chess::PGN::half-move>$$/) is export {
+our proto SAN(Position $pos, Move $move --> Str) {
+  (state %){$pos.fen ~ '|' ~ $move.gist} //= do {
+    my $next-pos = $move.($pos);
+    if    $next-pos.checkmate { {*} ~ '#' }
+    elsif $next-pos.check     { {*} ~ '+' }
+    else                      { {*} }
+  }
+}
+multi SAN($, ShortCastle $) { 'O-O'   }
+multi SAN($,  LongCastle $) { 'O-O-O' }
+multi SAN($pos, $move) {
+  my Str $san = $move.moving-piece.symbol.uc;
+  if $move.moving-piece !~~ Pawn {
+    my @similar-moves = $pos.legal-moves.grep({ .moving-piece.symbol ~~ $move.moving-piece.symbol && .to == $move.to  && .from !== $move.from });
+    if @similar-moves > 0 {
+      if @similar-moves.grep({ file(.from) eq file($move.from) }) == 0 {
+	$san ~= file($move.from);
+      } elsif @similar-moves.grep({ row(.from) eq row($move.from) }) == 0 {
+	$san ~= row($move.from);
+      } else {
+	$san ~= $move.from;
+      }
+    }
+  }
+  if $move ~~ _Capture {
+    $san ~= 'x';
+    $san.=subst: /^P/, file($move.from);
+  }
+  $san ~= $move.to;
+  $san.=subst: /^P/, '';
+
+  if $move.moving-piece ~~ Pawn && row($move.to) == 8|1 {
+    $san ~= '=' ~ $move.promotion.symbol.uc;
+  }
+  return $san;
+}
+
+multi infix:<*>(Str $fen, Str $move where /^^<Chess::PGN::half-move>$$/) is export {
   my Position $position .= new: :$fen;
-  fail "illegal move" unless my $actual-move = $position.legal-moves.first: { .gist eq $move };
+  fail "illegal move `$move` in position `{$position.fen}`" unless my $actual-move = $position.legal-moves.first: { SAN($position, $_) eq $move };
   $actual-move($position).fen;
 }
 
