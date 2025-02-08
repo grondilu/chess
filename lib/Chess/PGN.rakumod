@@ -3,13 +3,13 @@ unit grammar Chess::PGN;
 rule TOP { ^ <game>+ $ }
 
 rule game {
-  <info>* <move>+ <adjudication>?
+  [ <info>* <move>+ | <info>+ ] <adjudication>?
   <?{ [&&] $<move>»<move-number>».made Z== 1..* }>
 }
 
 rule info { '[' ~ ']' [ <tag> <string> ] }
 token tag { <.alpha>+ }
-rule string { '"' ~ '"' <.print>* }
+rule string { '"' ~ '"' <print>* }
 
 rule move {
   <move-number> [ <half-move> <nag> *  <comment> * ] ** 1..2
@@ -38,7 +38,7 @@ token piece-takes { <piece>'x'<square> }
 token castle     { [ 'O-O' '-O'? | 'o-o' '-o'? ] }
 token promotion  { [ <pawn-moves> | <pawn-takes> ]'='<piece> }
 
-token disambiguation { <file> | <rank> }
+token disambiguation { <file> | <rank> | <file><rank> }
 
 token move-number { (<digit>+)< . ... > { make +$0 } }
 
