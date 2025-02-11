@@ -16,7 +16,7 @@ subtest {
 
 subtest {
   for <Morphy Capablanca Fischer Karpov Kasparov> {
-    ok Chess::PGN.parse("t/$_.pgn".IO.slurp), "$_\'s games";
+    ok Chess::PGN.parse("resources/$_.pgn".IO.slurp), "$_\'s games";
   }
 }, "various players' games from PGNMentor";
 
