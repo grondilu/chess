@@ -112,6 +112,7 @@ class Position {
     self.new: fen => self.fen.subst: /<<<[wb]>>>/, { $_ eq 'w' ?? 'b' !! 'w' }
   }
   method pseudo-legal-moves {
+    (state %){self.fen} //= Array.new:
     gather {
       for self.board {
 	my ($from, $moving-piece) = .kv;
@@ -148,7 +149,7 @@ class Position {
 	  when Queen|Bishop|Rook {
 	    for .moves -> &dir {
 	      for self.ray($from, &dir) -> $to {
-	        my $move = Move.new: :$from, :$to, :$moving-piece;
+		my $move = Move.new: :$from, :$to, :$moving-piece;
 		$move does _Capture if self.board{$to};
 		take $move;
 	      }
@@ -182,7 +183,22 @@ class Position {
 	      # and this can never go off-board (so no need to catch errors)
 	      my $on = &forward($from);
 	      my $to = &forward($on);
-	      take Move.new: :$from, :$to, :$moving-piece unless self.board{$on} or self.board{$to};
+	      my $en-passant;
+	      unless ?self.board{$on} or ?self.board{$to} {
+		for &left, &right -> &dir {
+		  try {
+		    my $piece = self.board{&dir($to)};
+		    if ?$piece and $piece ~~ Pawn and $piece.color !== .color {
+		      $en-passant = $on;
+		    } 
+		  }
+		}
+		if ?$en-passant {
+		  take Move.new: :$from, :$to, :$moving-piece, :$en-passant;
+		} else {
+		  take Move.new: :$from, :$to, :$moving-piece;
+		}
+	      }
 	    } 
 	    # capturing
 	    for &left, &right -> &direction {
@@ -233,7 +249,7 @@ class Position {
 }
 
 class Move {
-  has square ($.from, $.to);
+  has square ($.from, $.to, $.en-passant);
   has Piece ($.promotion, $.moving-piece);
   method CALL-ME(Position $pos) {
     given $pos.clone {
@@ -251,8 +267,32 @@ class Move {
       }	elsif .en-passant && .en-passant == $!to {
 	.board{.backwards.(.en-passant)}:delete;
       }
+      if $!moving-piece ~~ King {
+	if .turn eq 'white' {
+	  .castling-rights.=subst(/<[KQ]>/, '', :g);
+	} else {
+	  .castling-rights.=subst(/<[kq]>/, '', :g);
+	}
+	.castling-rights = '-' if .castling-rights eq '';
+      } elsif $!moving-piece ~~ Rook and $!from eq <a1 a8 h1 h8>.any {
+	  .castling-rights.=subst:
+	    %(
+	      a1 => /Q/,
+	      a8 => /q/,
+	      h1 => /K/,
+	      h8 => /k/
+	    ){$!from}, ''
+	  ;
+	.castling-rights = '-' if .castling-rights eq '';
+      }
+      if $!moving-piece ~~ Pawn or self ~~ _Capture {
+	.half-move-clock = 0;
+      } else { .half-move-clock++ }
       if $!promotion.defined {
 	.board{$!to} = $!promotion;
+      }
+      if $!en-passant {
+	.en-passant = $!en-passant;
       }
       .full-move-number++ if .turn == black;
       .turn = .turn == white ?? black !! white;
@@ -361,10 +401,9 @@ multi SAN($pos, $move) {
   return $san;
 }
 
-multi infix:<*>(Str $fen, Str $move where /^^<Chess::PGN::half-move>$$/) is export {
-  my Position $position .= new: :$fen;
+multi infix:<*>(Position $position, Str $move where /^^<Chess::PGN::half-move>$$/) is export {
   fail "illegal move `$move` in position `{$position.fen}`" unless my $actual-move = $position.legal-moves.first: { SAN($position, $_) eq $move };
-  $actual-move($position).fen;
+  $actual-move($position);
 }
 
 sub legal-moves(fen $fen) is export { Position.new(:$fen).legal-moves }
