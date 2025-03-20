@@ -6,7 +6,7 @@ use Base64;
 enum color <black white>;
 
 enum square ('a'..'h' X~ 1..8);
-sub row   (square $s --> UInt) { +$s.substr(1,1) }
+sub row (square $s --> UInt) { +$s.substr(1,1) }
 sub file(square $s --> Str)  { ~$s.substr(0,1) }
 
 sub  left(square $s where /<[b..h]>/) { return square::{$s.trans('b'..'h' => 'a'..'g')}; }
@@ -57,6 +57,46 @@ class Position {
   has Str $.castling-rights    is rw;
 
   method clone { nextwith :board(%!board.clone), |%_ }
+  method zobrist-hash returns uint64 {
+    # http://hgm.nubati.net/book_format.html
+    use Chess::Polyglot;
+    my uint64 ($piece, $castle, $en-passant, $turn);
+
+    for %!board.sort(:by(*.key)) {
+      my ($row, $file) = -> $s { [ (row($s) - 1) , %( 'a'..'h' Z=> ^8 ){file($s)} ] }(square::{.key});
+      my $kind-of-piece = 2*%( <p n b r q k > Z=> ^6 ){.value.symbol.lc} + %( black, white Z=> ^2 ){.value.color};
+      my $offset-piece = 64 * $kind-of-piece + 8 * $row + $file;
+      $piece +^= Chess::Polyglot::RandomPiece[$offset-piece];
+    }
+
+    if $!castling-rights ~~ /K/ { $castle +^= Chess::Polyglot::RandomCastle[0] }
+    if $!castling-rights ~~ /Q/ { $castle +^= Chess::Polyglot::RandomCastle[1] }
+    if $!castling-rights ~~ /k/ { $castle +^= Chess::Polyglot::RandomCastle[2] }
+    if $!castling-rights ~~ /q/ { $castle +^= Chess::Polyglot::RandomCastle[3] }
+
+    if $!en-passant {
+      my &up-or-down = $!turn == white ?? &down !! &up;
+      my @left-or-right;
+      given file($!en-passant) {
+	when 'a' { @left-or-right = &right }
+	when 'h' { @left-or-right = &left }
+	default  { @left-or-right = &left, &right }
+      }
+      for @left-or-right X∘ &up-or-down -> &direction {
+	if my $left-or-right = %!board{&direction($!en-passant)} {
+	  if $left-or-right ~~ Pawn and $left-or-right.color == $!turn {
+	    $en-passant +^= Chess::Polyglot::RandomEnPassant[%( 'a'..'h' Z=> ^8 ){file($!en-passant)}];
+	    last;
+	  }
+	}
+      }
+    }
+
+    if $!turn == white { $turn +^= Chess::Polyglot::RandomTurn[0] }
+
+    return my uint64 $ = $piece +^ $castle +^ $en-passant +^ $turn;
+
+  }
   submethod BUILD(fen :$fen = startpos) {
     my $pos = self;
     my Int ($r, $c) = 0, 0;

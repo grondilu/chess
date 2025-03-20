@@ -2,7 +2,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.5.0",
+    "version" : "0.6.0",
     "description" : "Chess-related stuff in raku.",
     "author" : "L. Grondin",
     "build-depends" : [ ],
@@ -13,6 +13,7 @@
     "provides" : {
         "Chess::FEN"      : "lib/Chess/FEN.rakumod",
         "Chess::PGN"      : "lib/Chess/PGN.rakumod",
+	"Chess::Polyglot" : "lib/Chess/Polyglot",
 	"Chess::Graphics" : "lib/Chess/Graphics.rakumod",
         "Chess"           : "lib/Chess.rakumod"
     },
