@@ -53,5 +53,6 @@ for data.lines {
 	}
 }
 
+done-testing;
 
 # vi: ft=raku

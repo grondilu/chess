@@ -1,4 +1,4 @@
-use lib <.>;
+use lib <lib>;
 use Chess::PGN;
 
 use Test;
