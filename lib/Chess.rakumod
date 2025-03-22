@@ -355,6 +355,15 @@ class Move {
     ...
   }
   method gist { "$!from$!to" ~ ($!promotion ?? $!promotion.symbol.lc !! '') }
+  method uint16 returns uint16 {
+    my uint16 $ = reduce 8* * + *,
+      ord(file($!to)) - ord('a'),
+      row($!to) - 1,
+      ord(file($!from)) - ord('a'),
+      row($!from) - 1,
+      $!promotion ?? %( <k b r q> Z=> 1..4 ){$!promotion.symbol.lc} !! 0
+      ;
+  }
 }
 
 sub show(fen $fen) is export {
