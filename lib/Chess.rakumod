@@ -355,7 +355,7 @@ class Move {
     ...
   }
   method gist { "$!from$!to" ~ ($!promotion ?? $!promotion.symbol.lc !! '') }
-  method uint16 returns uint16 {
+  method uint returns uint16 {
     my ($to, $from) = $!to, $!from;
     if self ~~ Castle { ($to, $from) .= map: { square::{.gist.trans("bg" => "ah")} } }
     my uint16 $ =
