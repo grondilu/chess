@@ -7,9 +7,9 @@ rule game {
   <?{ [&&] $<move>»<move-number>».made Z== 1..* }>
 }
 
-rule info { '[' ~ ']' [ <tag> <string> ] }
+rule info { <('[' ~ ']'[<tag> <string>])> }
 token tag { <.alpha>+ }
-rule string { '"' ~ '"' <print>* }
+rule string { '"' ~ '"' <+graph+space+[+\-`]-[\"]>*? }
 
 rule move {
   <(<move-number> <half-move> <half-move>?)>
