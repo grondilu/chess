@@ -53,6 +53,14 @@ for data.lines {
 	}
 }
 
+for Chess::square::{*} X~ Chess::square::{*} {
+	my Chess::Move $move .= new: $_;
+	my $uint = $move.uint;
+
+	is $uint, Chess::Move.new($uint).uint, qq{"$_" -> $uint -> "$_"};
+}
+	
+
 done-testing;
 
 # vi: ft=raku

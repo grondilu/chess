@@ -354,19 +354,29 @@ class Move {
   multi method new(Str $san where /^^<Chess::PGN::half-move>$$/, Position :$pos) {
     ...
   }
-  method gist { "$!from$!to" ~ ($!promotion ?? $!promotion.symbol.lc !! '') }
+  multi method new(UInt $move) {
+    my $to-file   =  $move +&                 0b111;
+    my $to-row    = ($move +&             0b111_000) +>  3;
+    my $from-file = ($move +&         0b111_000_000) +>  6;
+    my $from-row  = ($move +&     0b111_000_000_000) +>  9;
+    my $promotion = ($move +& 0b111_000_000_000_000) +> 12;
+
+    my ($from, $to) = map -> ($r, $f) { square::{('a'..'h')[$f] ~ ($r + 1)} }, ($from-row, $from-file), ($to-row, $to-file);
+
+    samewith :$from, :$to, promotion => (Piece, Knight, Bishop, Rook, Queen)[$promotion];
+  }
   method uint returns uint16 {
     my ($to, $from) = $!to, $!from;
     if self ~~ Castle { ($to, $from) .= map: { square::{.gist.trans("bg" => "ah")} } }
-    my uint16 $ =
-      reduce 8* * + *,
-      ord(file($to)) - ord('a'),
-      row($to) - 1,
-      ord(file($from)) - ord('a'),
+    my uint16 $ = reduce 8* * + *,
+      $!promotion ?? %( <k b r q> Z=> 1..4 ){$!promotion.symbol.lc} !! 0,
       row($from) - 1,
-      $!promotion ?? %( <k b r q> Z=> 1..4 ){$!promotion.symbol.lc} !! 0
+      ord(file($from)) - ord('a'),
+      row($to) - 1,
+      ord(file($to)) - ord('a')
       ;
   }
+  method gist { "$!from$!to" ~ ($!promotion ?? $!promotion.symbol.lc !! '') }
 }
 
 sub show(fen $fen) is export {
