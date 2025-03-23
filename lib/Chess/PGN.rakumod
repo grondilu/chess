@@ -12,7 +12,7 @@ token tag { <.alpha>+ }
 rule string { '"' ~ '"' <print>* }
 
 rule move {
-  <move-number> [ <half-move> <nag> *  <comment> * ] ** 1..2
+  <(<move-number> <half-move> <half-move>?)>
 }
 token half-move {
     [
@@ -21,6 +21,7 @@ token half-move {
 	|| <piece-moves>
 	|| <pawn-moves>
     ]< + ++ # >?<annotation>?
+    <nag>* <comment>*
 }
 token annotation { < ?? ? !? ?! ! !! > }
 token nag { '$'<.digit>+ }
