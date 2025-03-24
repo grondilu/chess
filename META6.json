@@ -2,7 +2,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.6.9",
+    "version" : "0.7.0",
     "description" : "Chess-related stuff in raku.",
     "author" : "L. Grondin",
     "build-depends" : [ ],
@@ -16,6 +16,7 @@
 	"Chess::Polyglot" : "lib/Chess/Polyglot.rakumod",
 	"Chess::Openings" : "lib/Chess/Openings.rakumod",
 	"Chess::Graphics" : "lib/Chess/Graphics.rakumod",
+	"Chess::JS"       : "lib/Chess/JS.rakumod",
         "Chess"           : "lib/Chess.rakumod"
     },
     "source-url" : "git://github.com/grondilu/chess.git"
