@@ -1,4 +1,4 @@
-unit module Chess::JS;
+unit class Chess::JS;
 # translated from https://github.com/jhlywa/chess.js.git
 #`{{{ ORIGINAL LICENSE
 Copyright (c) 2025, Jeff Hlywa (jhlywa@gmail.com)
@@ -243,1015 +243,1000 @@ class Move {
   method isBigPawn         { $!flags.match: %FLAGS<BIG_PAWN>     }
 }
 
-class Chess {
-  has @!board[128];
-  has $!turn = WHITE;
-  has %!header;
-  has %!kings = w => EMPTY, b => EMPTY;
-  has $!epSquare = -1;
-  has $!halfMoves = 0;
-  has $!moveNumber = 0;
-  has @!history;
-  has %!comments;
-  has %!castling = w => 0, b => 0;
-  # tracks number of times a position has been seen for repetition checking
-  has %!positionCount;
+has @!board[128];
+has $!turn = WHITE;
+has %!header;
+has %!kings = w => EMPTY, b => EMPTY;
+has $!epSquare = -1;
+has $!halfMoves = 0;
+has $!moveNumber = 0;
+has @!history;
+has %!comments;
+has %!castling = w => 0, b => 0;
+# tracks number of times a position has been seen for repetition checking
+has %!positionCount;
 
-  method new($fen = DEFAULT_POSITION, % (:$skipValidation = False) = {}) {
-    self.bless(:$fen, :$skipValidation);
-  }
-  submethod TWEAK(:$fen, :$skipValidation) {
-    self.load: my $ = $fen, { :$skipValidation };
-  }
+method new($fen = DEFAULT_POSITION, % (:$skipValidation = False) = {}) {
+  self.bless(:$fen, :$skipValidation);
+}
+submethod TWEAK(:$fen, :$skipValidation) {
+  self.load: my $ = $fen, { :$skipValidation };
+}
 
-  method clear( % (:$preserveHeaders = False) = {}) {
-    @!board = Array.new: Any xx 128;
-    %!kings = w => EMPTY, b => EMPTY;
-    $!turn = WHITE;
-    %!castling = w => 0, b => 0;
-    $!epSquare = EMPTY;
-    $!halfMoves = 0;
-    $!moveNumber = 1;
-    @!history = [];
-    %!comments := {};
-    %!header := {} unless $preserveHeaders;
-    %!positionCount := {};
-    %!header<SetUp>:delete;
-    %!header<FEN>:delete;
+method clear( % (:$preserveHeaders = False) = {}) {
+  @!board = Array.new: Any xx 128;
+  %!kings = w => EMPTY, b => EMPTY;
+  $!turn = WHITE;
+  %!castling = w => 0, b => 0;
+  $!epSquare = EMPTY;
+  $!halfMoves = 0;
+  $!moveNumber = 1;
+  @!history = [];
+  %!comments := {};
+  %!header := {} unless $preserveHeaders;
+  %!positionCount := {};
+  %!header<SetUp>:delete;
+  %!header<FEN>:delete;
+}
+method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
+  my @tokens = $fen.words;
+  if 2 ≤ @tokens < 6 {
+    return samewith (|@tokens, |<- - 0 1>.slice(-(6 - @tokens))).join(" "),
+      { :$skipValidation, :$preserveHeaders }
+      ;
   }
-  method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
-    my @tokens = $fen.words;
-    if 2 ≤ @tokens < 6 {
-      return samewith (|@tokens, |<- - 0 1>.slice(-(6 - @tokens))).join(" "),
-	{ :$skipValidation, :$preserveHeaders }
-	;
-    }
-    @tokens = $fen.words;
-    unless $skipValidation {
-      try validateFen $fen;
-      fail $! if $!;
-    }
-    my \position = @tokens[0];
-    my $square = 0;
-    self.clear({ :preserveHeaders });
-    loop (my $i = 0; $i < position.chars; $i++) {
-      my \piece = position.substr($i, 1);
-      if piece eq '/' {
-	$square += 8;
-      } elsif isDigit(piece) {
-	$square += piece;
-      } else {
-	my \color = piece lt 'a' ?? WHITE !! BLACK;
-	self.put: { type => piece.lc, :color(color) }, algebraic($square);
-	$square++;
-      }
-    }
-    $!turn = @tokens[1];
-    given @tokens[2] {
-      when /K/ { %!castling<w> +|= %BITS<KSIDE_CASTLE>; proceed }
-      when /Q/ { %!castling<w> +|= %BITS<QSIDE_CASTLE>; proceed }
-      when /k/ { %!castling<b> +|= %BITS<KSIDE_CASTLE>; proceed }
-      when /q/ { %!castling<b> +|= %BITS<QSIDE_CASTLE>;         }
-    }
-    $!epSquare = @tokens[3] eq '-' ?? EMPTY !! %Ox88[@tokens[3]];
-    $!halfMoves = @tokens[4].Int;
-    $!moveNumber = @tokens[5].Int;
-    self!updateSetup($fen);
-    self!incPositionCount($fen);
+  @tokens = $fen.words;
+  unless $skipValidation {
+    try validateFen $fen;
+    fail $! if $!;
   }
-  method fen {
-    my $empty = 0;
-    my $fen = '';
-    loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
-      if @!board[$i] {
-	if $empty > 0 {
-	  $fen ~= $empty;
-	  $empty = 0;
-	}
-	my (\color, \piece) = @!board[$i]<color type>;
-	$fen ~= (color eq WHITE ?? *.uc !! *.lc)(piece);
-      } else {
-	$empty++
-      }
-      if ($i + 1) +& 136 {
-	if $empty > 0 {
-	  $fen ~= $empty;
-	}
-	if $i !== %Ox88<h1> {
-	  $fen ~= '/';
-	}
-	$empty = 0;
-	$i += 8;
-      }
-    }
-    my $castling = '';
-    if %!castling{WHITE} +& %BITS<KSIDE_CASTLE> {
-      $castling ~= 'K'
-    }
-    if %!castling{WHITE} +& %BITS<QSIDE_CASTLE> {
-      $castling ~= 'Q'
-    }
-    if %!castling{BLACK} +& %BITS<KSIDE_CASTLE> {
-      $castling ~= 'k'
-    }
-    if %!castling{BLACK} +& %BITS<QSIDE_CASTLE> {
-      $castling ~= 'q'
-    }
-    $castling ||= '-';
-    my $epSquare = '-';
-    if $!epSquare !== EMPTY {
-      my \bigPawnSquare = $!epSquare + ($!turn eq WHITE ?? +16 !! -16);
-      my \squares = [bigPawnSquare + 1, bigPawnSquare - 1];
-      for squares -> \square {
-	if square +& 136 {
-	  next;
-	}
-	my \color = $!turn;
-	if @!board[square] && @!board[square]<color> eq color && @!board[square]<type> eq PAWN {
-	  self!makeMove: {
-	    :color(color),
-	    :from(square),
-	    :to($!epSquare),
-	    :piece(PAWN),
-	    :captured(PAWN),
-	    :flags(%BITS<EP_CAPTURE>)
-	  };
-	  my \isLegal = !self!isKingAttacked(color);
-	  self!undoMove();
-	  if isLegal {
-	    $epSquare = algebraic($!epSquare);
-	    last;
-	  }
-	}
-      }
-    }
-    return [
-      $fen,
-      $!turn,
-      $castling,
-      $epSquare,
-      $!halfMoves,
-      $!moveNumber
-    ].join(' ');
-  }
-  #`{{{
-  /*
-   * Called when the initial board setup is changed with put() or remove().
-   * modifies the SetUp and FEN properties of the header object. If the FEN
-   * is equal to the default position, the SetUp and FEN are deleted the setup
-   * is only updated if history.length is zero, ie moves haven't been made.
-   */
-  }}}
-  method !updateSetup($fen) {
-    if @!history.elems > 0 { return }
-    if $fen ne DEFAULT_POSITION {
-      %!header<SetUp> = "1";
-      %!header<FEN>   = $fen;
+  my \position = @tokens[0];
+  my $square = 0;
+  self.clear({ :preserveHeaders });
+  loop (my $i = 0; $i < position.chars; $i++) {
+    my \piece = position.substr($i, 1);
+    if piece eq '/' {
+      $square += 8;
+    } elsif isDigit(piece) {
+      $square += piece;
     } else {
-      %!header<SetUp>:delete;
-      %!header<FEN>  :delete;
+      my \color = piece lt 'a' ?? WHITE !! BLACK;
+      self.put: { type => piece.lc, :color(color) }, algebraic($square);
+      $square++;
     }
   }
-  method reset { 
-    self.load(DEFAULT_POSITION);
+  $!turn = @tokens[1];
+  given @tokens[2] {
+    when /K/ { %!castling<w> +|= %BITS<KSIDE_CASTLE>; proceed }
+    when /Q/ { %!castling<w> +|= %BITS<QSIDE_CASTLE>; proceed }
+    when /k/ { %!castling<b> +|= %BITS<KSIDE_CASTLE>; proceed }
+    when /q/ { %!castling<b> +|= %BITS<QSIDE_CASTLE>;         }
   }
-  method get(\square) {
-    @!board[%Ox88{square}];
+  $!epSquare = @tokens[3] eq '-' ?? EMPTY !! %Ox88[@tokens[3]];
+  $!halfMoves = @tokens[4].Int;
+  $!moveNumber = @tokens[5].Int;
+  self!updateSetup($fen);
+  self!incPositionCount($fen);
+}
+method fen {
+  my $empty = 0;
+  my $fen = '';
+  loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
+    if @!board[$i] {
+      if $empty > 0 {
+	$fen ~= $empty;
+	$empty = 0;
+      }
+      my (\color, \piece) = @!board[$i]<color type>;
+      $fen ~= (color eq WHITE ?? *.uc !! *.lc)(piece);
+    } else {
+      $empty++
+    }
+    if ($i + 1) +& 136 {
+      if $empty > 0 {
+	$fen ~= $empty;
+      }
+      if $i !== %Ox88<h1> {
+	$fen ~= '/';
+      }
+      $empty = 0;
+      $i += 8;
+    }
   }
-  method put(% (:$type, :$color), \square) {
-    if self!put({ :$type, :$color }, square) {
-      self!updateCastlingRights();
-      self!updateEnPassantSquare();
-      self!updateSetup(self.fen());
-      return True;
-    }
-    return False;
+  my $castling = '';
+  if %!castling{WHITE} +& %BITS<KSIDE_CASTLE> {
+    $castling ~= 'K'
   }
-  method !put(% (:$type, :$color), \square) {
-    unless SYMBOLS.match($type.lc) {
-      return False;
-    }
-    unless %Ox88{square}:exists {
-      return False;
-    }
-    my \sq = %Ox88{square};
-    if $type eq KING && !(%!kings{$color} == EMPTY|sq) {
-      return False;
-    }
-    my \currentPieceOnSquare = @!board[sq];
-    if currentPieceOnSquare && currentPieceOnSquare<type> eq KING {
-      %!kings{currentPieceOnSquare<color>} = EMPTY;
-    }
-    @!board[sq] = { :$type, :$color };
-    if $type eq KING {
-      %!kings{$color} = sq;
-    }
-    return True;
+  if %!castling{WHITE} +& %BITS<QSIDE_CASTLE> {
+    $castling ~= 'Q'
   }
-  method remove(\square) {
-    my \piece = self.get(square);
-    @!board[%Ox88[square]]:delete;
-    if piece && piece<type> eq KING {
-      %!kings{piece<color>} = EMPTY;
+  if %!castling{BLACK} +& %BITS<KSIDE_CASTLE> {
+    $castling ~= 'k'
+  }
+  if %!castling{BLACK} +& %BITS<QSIDE_CASTLE> {
+    $castling ~= 'q'
+  }
+  $castling ||= '-';
+  my $epSquare = '-';
+  if $!epSquare !== EMPTY {
+    my \bigPawnSquare = $!epSquare + ($!turn eq WHITE ?? +16 !! -16);
+    my \squares = [bigPawnSquare + 1, bigPawnSquare - 1];
+    for squares -> \square {
+      if square +& 136 {
+	next;
+      }
+      my \color = $!turn;
+      if @!board[square] && @!board[square]<color> eq color && @!board[square]<type> eq PAWN {
+	self!makeMove: {
+	  :color(color),
+	  :from(square),
+	  :to($!epSquare),
+	  :piece(PAWN),
+	  :captured(PAWN),
+	  :flags(%BITS<EP_CAPTURE>)
+	};
+	my \isLegal = !self!isKingAttacked(color);
+	self!undoMove();
+	if isLegal {
+	  $epSquare = algebraic($!epSquare);
+	  last;
+	}
+      }
     }
+  }
+  return [
+    $fen,
+    $!turn,
+    $castling,
+    $epSquare,
+    $!halfMoves,
+    $!moveNumber
+  ].join(' ');
+}
+#`[[[
+/*
+ * Called when the initial board setup is changed with put() or remove().
+ * modifies the SetUp and FEN properties of the header object. If the FEN
+ * is equal to the default position, the SetUp and FEN are deleted the setup
+ * is only updated if history.length is zero, ie moves haven't been made.
+ */
+]]]
+method !updateSetup($fen) {
+  if @!history.elems > 0 { return }
+  if $fen ne DEFAULT_POSITION {
+    %!header<SetUp> = "1";
+    %!header<FEN>   = $fen;
+  } else {
+    %!header<SetUp>:delete;
+    %!header<FEN>  :delete;
+  }
+}
+method reset { 
+  self.load(DEFAULT_POSITION);
+}
+method get(\square) {
+  @!board[%Ox88{square}];
+}
+method put(% (:$type, :$color), \square) {
+  if self!put({ :$type, :$color }, square) {
     self!updateCastlingRights();
     self!updateEnPassantSquare();
     self!updateSetup(self.fen());
-    return piece
+    return True;
   }
-  method !updateCastlingRights {
-    my \whiteKingInPlace = .defined && .<type> eq KING && .<color> eq WHITE given @!board[%Ox88<e1>];
-    my \blackKingInPlace = .defined && .<type> eq KING && .<color> eq BLACK given @!board[%Ox88<e8>];
-    if !whiteKingInPlace || (@!board[%Ox88<a1>]<type> // '') ne ROOK || @!board[%Ox88<a1>]<color> ne WHITE {
-      %!castling<w> +&= +^%BITS<QSIDE_CASTLE>;
-    }
-    if !whiteKingInPlace || (@!board[%Ox88<h1>]<type> // '') ne ROOK || @!board[%Ox88<h1>]<color> ne WHITE {
-      %!castling<w> +&= +^%BITS<KSIDE_CASTLE>;
-    }
-    if !blackKingInPlace || (@!board[%Ox88<a8>]<type> // '') ne ROOK || @!board[%Ox88<a8>]<color> ne BLACK {
-      %!castling<b> +&= +^%BITS<QSIDE_CASTLE>;
-    }
-    if !blackKingInPlace || (@!board[%Ox88<h8>]<type> // '') ne ROOK || @!board[%Ox88<h8>]<color> ne BLACK {
-      %!castling<b> +&= +^%BITS<KSIDE_CASTLE>;
-    }
+  return False;
+}
+method !put(% (:$type, :$color), \square) {
+  unless SYMBOLS.match($type.lc) {
+    return False;
   }
-  method !updateEnPassantSquare {
-    if $!epSquare == EMPTY {
-      return
-    }
-    my \startSquare = $!epSquare + ($!turn eq WHITE ?? -16 !! 16);
-    my \currentSquare = $!epSquare + ($!turn eq WHITE ?? -16 !! 16);
-    my \attackers = [currentSquare + 1, currentSquare - 1];
-    if @!board[startSquare] || @!board[$!epSquare] || @!board[currentSquare]<color> ne swapColor($!turn) || @!board[currentSquare]<type>  ne PAWN {
-      $!epSquare = EMPTY;
-      return;
-    }
-    my \canCapture = -> \square { !(square +& 136) && @!board[square]<color> eq $!turn && @!board[square]<type> eq PAWN };
-    if attackers.grep(canCapture) {
-      $!epSquare = EMPTY
-    }
+  unless %Ox88{square}:exists {
+    return False;
   }
-  method !attacked(\color, \square, \verbose) {
-    my \attackers = [];
-    loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1> ; $i++) {
-      if $i +& 136 {
-	$i += 7;
-	next;
-      }
-      if @!board[$i] === void0 || @!board[$i]<color> ne color {
-	next;
-      }
-      my \piece = @!board[$i];
-      my \difference = $i - square;
-      if difference == 0 {
-	next;
-      }
-      my \index = difference + 119;
-      if @ATTACKS[index] +& %PIECE_MASKS{piece<type>} {
-	if piece<type> eq PAWN {
-	  if difference > 0 && piece<color> eq WHITE || difference ≤ 0 && piece<color> eq BLACK {
-	    if !verbose {
-	      return True;
-	    } else {
-	      attackers.push: algebraic($i)
-	    }
-	  }
-	  next;
-	}
-	if piece<type> eq 'n'|'k' {
+  my \sq = %Ox88{square};
+  if $type eq KING && !(%!kings{$color} == EMPTY|sq) {
+    return False;
+  }
+  my \currentPieceOnSquare = @!board[sq];
+  if currentPieceOnSquare && currentPieceOnSquare<type> eq KING {
+    %!kings{currentPieceOnSquare<color>} = EMPTY;
+  }
+  @!board[sq] = { :$type, :$color };
+  if $type eq KING {
+    %!kings{$color} = sq;
+  }
+  return True;
+}
+method remove(\square) {
+  my \piece = self.get(square);
+  @!board[%Ox88[square]]:delete;
+  if piece && piece<type> eq KING {
+    %!kings{piece<color>} = EMPTY;
+  }
+  self!updateCastlingRights();
+  self!updateEnPassantSquare();
+  self!updateSetup(self.fen());
+  return piece
+}
+method !updateCastlingRights {
+  my \whiteKingInPlace = .defined && .<type> eq KING && .<color> eq WHITE given @!board[%Ox88<e1>];
+  my \blackKingInPlace = .defined && .<type> eq KING && .<color> eq BLACK given @!board[%Ox88<e8>];
+  if !whiteKingInPlace || (@!board[%Ox88<a1>]<type> // '') ne ROOK || @!board[%Ox88<a1>]<color> ne WHITE {
+    %!castling<w> +&= +^%BITS<QSIDE_CASTLE>;
+  }
+  if !whiteKingInPlace || (@!board[%Ox88<h1>]<type> // '') ne ROOK || @!board[%Ox88<h1>]<color> ne WHITE {
+    %!castling<w> +&= +^%BITS<KSIDE_CASTLE>;
+  }
+  if !blackKingInPlace || (@!board[%Ox88<a8>]<type> // '') ne ROOK || @!board[%Ox88<a8>]<color> ne BLACK {
+    %!castling<b> +&= +^%BITS<QSIDE_CASTLE>;
+  }
+  if !blackKingInPlace || (@!board[%Ox88<h8>]<type> // '') ne ROOK || @!board[%Ox88<h8>]<color> ne BLACK {
+    %!castling<b> +&= +^%BITS<KSIDE_CASTLE>;
+  }
+}
+method !updateEnPassantSquare {
+  if $!epSquare == EMPTY {
+    return
+  }
+  my \startSquare = $!epSquare + ($!turn eq WHITE ?? -16 !! 16);
+  my \currentSquare = $!epSquare + ($!turn eq WHITE ?? -16 !! 16);
+  my \attackers = [currentSquare + 1, currentSquare - 1];
+  if @!board[startSquare] || @!board[$!epSquare] || @!board[currentSquare]<color> ne swapColor($!turn) || @!board[currentSquare]<type>  ne PAWN {
+    $!epSquare = EMPTY;
+    return;
+  }
+  my \canCapture = -> \square { !(square +& 136) && @!board[square]<color> eq $!turn && @!board[square]<type> eq PAWN };
+  if attackers.grep(canCapture) {
+    $!epSquare = EMPTY
+  }
+}
+method !attacked(\color, \square, \verbose) {
+  my \attackers = [];
+  loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1> ; $i++) {
+    if $i +& 136 {
+      $i += 7;
+      next;
+    }
+    if @!board[$i] === void0 || @!board[$i]<color> ne color {
+      next;
+    }
+    my \piece = @!board[$i];
+    my \difference = $i - square;
+    if difference == 0 {
+      next;
+    }
+    my \index = difference + 119;
+    if @ATTACKS[index] +& %PIECE_MASKS{piece<type>} {
+      if piece<type> eq PAWN {
+	if difference > 0 && piece<color> eq WHITE || difference ≤ 0 && piece<color> eq BLACK {
 	  if !verbose {
 	    return True;
 	  } else {
-	    attackers.push: algebraic($i);
-	    next;
+	    attackers.push: algebraic($i)
 	  }
 	}
-	my \offset = @RAYS[index];
-	my $j = $i + offset;
-	my $blocked = False;
-	while $j !== square {
-	  if @!board[$j]:exists {
-	    $blocked = True;
+	next;
+      }
+      if piece<type> eq 'n'|'k' {
+	if !verbose {
+	  return True;
+	} else {
+	  attackers.push: algebraic($i);
+	  next;
+	}
+      }
+      my \offset = @RAYS[index];
+      my $j = $i + offset;
+      my $blocked = False;
+      while $j !== square {
+	if @!board[$j]:exists {
+	  $blocked = True;
+	  last;
+	}
+	$j += offset;
+      }
+      if !$blocked {
+	if !verbose {
+	  return True;
+	} else {
+	  attackers.push: algebraic($i);
+	  next;
+	}
+      }
+    }
+  }
+  if verbose {
+    return attackers;
+  } else {
+    return False;
+  }
+}
+method attackers(\square, \attackedBy) {
+  if !attackedBy {
+    return self!attacked($!turn, %Ox88[square], True);
+  } else {
+    return self!attacked(attackedBy, %Ox88[square], True);
+  }
+}
+method !isKingAttacked(\color) {
+  my \square = %!kings{color};
+  square === -1 ?? False !! self!attacked(swapColor(color), square);
+}
+method isAttacked(\square, \attackedBy) {
+  self!attacked(attackedBy, %Ox88[square])
+}
+method isCheck {
+  self!isKingAttacked($!turn);
+}
+method inCheck {
+  self.isCheck();
+}
+method isCheckmate {
+  self.isCheck() && self!moves().elems == 0
+}
+method isStalemate {
+  !self.isCheck && self!moves().elems == 0
+}
+method isInsufficientMaterial {
+  my \pieces = {
+    b => 0,
+    n => 0,
+    r => 0,
+    q => 0,
+    k => 0,
+    p => 0
+  };
+  my \bishops = [];
+  my $numPieces = 0;
+  my $squareColor = 0;
+  loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
+    $squareColor = ($squareColor + 1) % 2;
+    if $i +& 136 {
+      $i += 7;
+      next;
+    }
+    my \piece = @!board[$i];
+    if piece {
+      pieces{piece<type>} = pieces{piece<type>}:exists ?? pieces{piece<type>} + 1 !! 1;
+      if piece<type> eq BISHOP {
+	bishops.push($squareColor);
+      }
+      $numPieces++;
+    }
+  }
+  if $numPieces == 2 {
+    return True;
+  } elsif 
+  # k vs. kn .... or .... k vs. kb
+  $numPieces === 3 && (pieces{BISHOP} == 1 || pieces{KNIGHT} == 1)
+  {
+    return True;
+  } elsif $numPieces == pieces{BISHOP} + 2 {
+    my $sum = 0;
+    my \len = bishops.elems;
+    loop (my $i = 0; $i < len; $i++) {
+      $sum += bishops[$i]
+    }
+    if $sum == 0|len {
+      return True
+    }
+  }
+  return False;
+}
+method isThreefoldRepetition {
+  self!getPositionCount(self.fen()) ≥ 3
+}
+method isDrawByFiftyMoves {
+  $!halfMoves ≥ 100
+}
+method isDraw {
+  self.isDrawByFiftyMoves || self.isStalemate || self.isInsufficientMaterial || self.isThreefoldRepetition
+}
+method isGameOver {
+  self.isCheckmate || self.isStalemate || self.isDraw
+}
+method moves(% (:$verbose = False, :$square = void0, :$piece = void0) = {}) {
+  my \moves = self!moves({ :$square, :$piece });
+  if $verbose {
+    return moves.map( -> \move { Move.new(self, move) } );
+  } else {
+    return moves.map( -> \move { self!moveToSan(move, moves) } )
+  }
+}
+method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
+  my \forSquare = $square ?? $square.toLowerCase !! void0;
+  my \forPiece = $piece.lc;
+  my \moves = [];
+  my \us = $!turn;
+  my \them = swapColor(us);
+  my $firstSquare = %Ox88<a8>;
+  my $lastSquare = %Ox88<h1>;
+  my $singleSquare = False;
+  if forSquare {
+    if !%Ox88{forSquare}:exists {
+      return []
+    } else {
+      $firstSquare = $lastSquare = %Ox88{forSquare};
+      $singleSquare = True;
+    }
+  }
+  loop (my $from = $firstSquare; $from ≤ $lastSquare; $from++) {
+    if $from +& 136 {
+      $from += 7;
+      next;
+    }
+    if !@!board[$from] || @!board[$from]<color> eq them {
+      next;
+    }
+    my \type = @!board[$from]<type>;
+    my $to;
+    if type eq PAWN {
+      next if forPiece && forPiece ne type;
+	
+      $to = $from + %PAWN_OFFSETS{us}[0];
+      if !@!board[$to] {
+	addMove(moves, us, $from, $to, PAWN);
+	$to = $from + %PAWN_OFFSETS{us}[1];
+	if %SECOND_RANK{us} == rank($from) && !@!board[$to] {
+	  addMove(moves, us, $from, $to, PAWN, void0, %BITS<BIG_PAWN>);
+	}
+      }
+      loop (my $j = 2; $j < 4; $j++) {
+	$to = $from + %PAWN_OFFSETS{us}[$j];
+	next if $to +& 136;
+
+	if @!board{$to}<color> eq them {
+	  addMove(moves, us, $from, $to, PAWN, @!board[$to]<type>, %BITS<CAPTURE>);
+	} elsif $to == $!epSquare {
+	  addMove(moves, us, $from, $to, PAWN, PAWN, %BITS<EP_CAPTURE>);
+	}
+      }
+    } else {
+      if forPiece && forPiece ne type {
+	next; }
+      loop (my ($j, \len) = 0, %PIECE_OFFSETS{type}.elems; $j < len; $j++) {
+	my \offset = %PIECE_OFFSETS{type}[$j];
+	$to = $from;
+	loop {
+	  $to += offset;
+	  last if $to +& 136;
+
+	  if !@!board[$to] {
+	    addMove(moves, us, $from, $to, type);
+	  } else {
+	    last if @!board[$to]<color> eq us;
+
+	    addMove(moves, us, $from, $to, type, @!board[$to]<type>, %BITS<CAPTURE>);
 	    last;
 	  }
-	  $j += offset;
-	}
-	if !$blocked {
-	  if !verbose {
-	    return True;
-	  } else {
-	    attackers.push: algebraic($i);
-	    next;
+	  if type eq KNIGHT|KING {
+	    last;
 	  }
 	}
       }
     }
-    if verbose {
-      return attackers;
-    } else {
-      return False;
-    }
   }
-  method attackers(\square, \attackedBy) {
-    if !attackedBy {
-      return self!attacked($!turn, %Ox88[square], True);
-    } else {
-      return self!attacked(attackedBy, %Ox88[square], True);
-    }
-  }
-  method !isKingAttacked(\color) {
-    my \square = %!kings{color};
-    square === -1 ?? False !! self!attacked(swapColor(color), square);
-  }
-  method isAttacked(\square, \attackedBy) {
-    self!attacked(attackedBy, %Ox88[square])
-  }
-  method isCheck {
-    self!isKingAttacked($!turn);
-  }
-  method inCheck {
-    self.isCheck();
-  }
-  method isCheckmate {
-    self.isCheck() && self!moves().elems == 0
-  }
-  method isStalemate {
-    !self.isCheck && self!moves().elems == 0
-  }
-  method isInsufficientMaterial {
-    my \pieces = {
-      b => 0,
-      n => 0,
-      r => 0,
-      q => 0,
-      k => 0,
-      p => 0
-    };
-    my \bishops = [];
-    my $numPieces = 0;
-    my $squareColor = 0;
-    loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
-      $squareColor = ($squareColor + 1) % 2;
-      if $i +& 136 {
-	$i += 7;
-	next;
-      }
-      my \piece = @!board[$i];
-      if piece {
-	pieces{piece<type>} = pieces{piece<type>}:exists ?? pieces{piece<type>} + 1 !! 1;
-	if piece<type> eq BISHOP {
-	  bishops.push($squareColor);
+  if forPiece === void0 || forPiece eq KING {
+    if !$singleSquare || $lastSquare == %!kings{us} {
+      if %!castling{us} +& %BITS<KSIDE_CASTLE> {
+	my \castlingFrom = %!kings{us};
+	my \castlingTo = castlingFrom + 2;
+	if !@!board[castlingFrom + 1] && !@!board{castlingTo} && !self!attacked(them, %!kings{us}) && !self!attacked(them, castlingFrom + 1) && !self!attacked(them, castlingTo) {
+	  addMove(moves, us, %!kings{us}, castlingTo, KING, void0, %BITS<KSIDE_CASTLE>);
 	}
-	$numPieces++;
       }
-    }
-    if $numPieces == 2 {
-      return True;
-    } elsif 
-    # k vs. kn .... or .... k vs. kb
-    $numPieces === 3 && (pieces{BISHOP} == 1 || pieces{KNIGHT} == 1)
-    {
-      return True;
-    } elsif $numPieces == pieces{BISHOP} + 2 {
-      my $sum = 0;
-      my \len = bishops.elems;
-      loop (my $i = 0; $i < len; $i++) {
-	$sum += bishops[$i]
-      }
-      if $sum == 0|len {
-	return True
-      }
-    }
-    return False;
-  }
-  method isThreefoldRepetition {
-    self!getPositionCount(self.fen()) ≥ 3
-  }
-  method isDrawByFiftyMoves {
-    $!halfMoves ≥ 100
-  }
-  method isDraw {
-    self.isDrawByFiftyMoves || self.isStalemate || self.isInsufficientMaterial || self.isThreefoldRepetition
-  }
-  method isGameOver {
-    self.isCheckmate || self.isStalemate || self.isDraw
-  }
-  method moves(% (:$verbose = False, :$square = void0, :$piece = void0) = {}) {
-    my \moves = self!moves({ :$square, :$piece });
-    if $verbose {
-      return moves.map( -> \move { Move.new(self, move) } );
-    } else {
-      return moves.map( -> \move { self!moveToSan(move, moves) } )
-    }
-  }
-  method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
-    my \forSquare = $square ?? $square.toLowerCase !! void0;
-    my \forPiece = $piece.lc;
-    my \moves = [];
-    my \us = $!turn;
-    my \them = swapColor(us);
-    my $firstSquare = %Ox88<a8>;
-    my $lastSquare = %Ox88<h1>;
-    my $singleSquare = False;
-    if forSquare {
-      if !%Ox88{forSquare}:exists {
-	return []
-      } else {
-	$firstSquare = $lastSquare = %Ox88{forSquare};
-	$singleSquare = True;
-      }
-    }
-    loop (my $from = $firstSquare; $from ≤ $lastSquare; $from++) {
-      if $from +& 136 {
-	$from += 7;
-	next;
-      }
-      if !@!board[$from] || @!board[$from]<color> eq them {
-	next;
-      }
-      my \type = @!board[$from]<type>;
-      my $to;
-      if type eq PAWN {
-	next if forPiece && forPiece ne type;
-	  
-	$to = $from + %PAWN_OFFSETS{us}[0];
-	if !@!board[$to] {
-	  addMove(moves, us, $from, $to, PAWN);
-	  $to = $from + %PAWN_OFFSETS{us}[1];
-	  if %SECOND_RANK{us} == rank($from) && !@!board[$to] {
-	    addMove(moves, us, $from, $to, PAWN, void0, %BITS<BIG_PAWN>);
-	  }
-	}
-	loop (my $j = 2; $j < 4; $j++) {
-	  $to = $from + %PAWN_OFFSETS{us}[$j];
-	  next if $to +& 136;
-
-	  if @!board{$to}<color> eq them {
-	    addMove(moves, us, $from, $to, PAWN, @!board[$to]<type>, %BITS<CAPTURE>);
-	  } elsif $to == $!epSquare {
-	    addMove(moves, us, $from, $to, PAWN, PAWN, %BITS<EP_CAPTURE>);
-	  }
-	}
-      } else {
-	if forPiece && forPiece ne type {
-	  next; }
-	loop (my ($j, \len) = 0, %PIECE_OFFSETS{type}.elems; $j < len; $j++) {
-	  my \offset = %PIECE_OFFSETS{type}[$j];
-	  $to = $from;
-	  loop {
-	    $to += offset;
-	    last if $to +& 136;
-
-	    if !@!board[$to] {
-	      addMove(moves, us, $from, $to, type);
-	    } else {
-	      last if @!board[$to]<color> eq us;
-
-	      addMove(moves, us, $from, $to, type, @!board[$to]<type>, %BITS<CAPTURE>);
-	      last;
-	    }
-	    if type eq KNIGHT|KING {
-	      last;
-	    }
-	  }
+      if %!castling{us} +& %BITS<QSIDE_CASTLE> {
+	my \castlingFrom = %!kings{us};
+	my \castlingTo = castlingFrom - 2;
+	if !@!board[castlingFrom - 1] && !@!board[castlingFrom - 2] && !@!board[castlingFrom - 3] && !self!attacked(them, %!kings{us}) && !self!attacked(them, castlingFrom - 1) && !self!attacked(them, castlingTo) {
+	  addMove(moves, us, %!kings{us}, castlingTo, KING, void0, %BITS<QSIDE_CASTLE>);
 	}
       }
     }
-    if forPiece === void0 || forPiece eq KING {
-      if !$singleSquare || $lastSquare == %!kings{us} {
-	if %!castling{us} +& %BITS<KSIDE_CASTLE> {
-	  my \castlingFrom = %!kings{us};
-	  my \castlingTo = castlingFrom + 2;
-	  if !@!board[castlingFrom + 1] && !@!board{castlingTo} && !self!attacked(them, %!kings{us}) && !self!attacked(them, castlingFrom + 1) && !self!attacked(them, castlingTo) {
-	    addMove(moves, us, %!kings{us}, castlingTo, KING, void0, %BITS<KSIDE_CASTLE>);
-	  }
-	}
-	if %!castling{us} +& %BITS<QSIDE_CASTLE> {
-	  my \castlingFrom = %!kings{us};
-	  my \castlingTo = castlingFrom - 2;
-	  if !@!board[castlingFrom - 1] && !@!board[castlingFrom - 2] && !@!board[castlingFrom - 3] && !self!attacked(them, %!kings{us}) && !self!attacked(them, castlingFrom - 1) && !self!attacked(them, castlingTo) {
-	    addMove(moves, us, %!kings{us}, castlingTo, KING, void0, %BITS<QSIDE_CASTLE>);
-	  }
-	}
-      }
+  }
+  if !$legal || %!kings{us} == -1 {
+    return moves;
+  }
+  my \legalMoves = [];
+  loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
+    self!makeMove(moves[$i]);
+    if !self!isKingAttacked(us) {
+      legalMoves.push(moves[$i]);
     }
-    if !$legal || %!kings{us} == -1 {
-      return moves;
-    }
-    my \legalMoves = [];
+    self!undoMove();
+  }
+  return legalMoves
+}
+method move($move, % (:$strict = False) = {}) {
+  my %moveObj;
+  if $move ~~ Str {
+    %moveObj := self!moveFromSan($move, $strict);
+  } elsif $move ~~ Hash {
+    my \moves = self!moves();
     loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
-      self!makeMove(moves[$i]);
-      if !self!isKingAttacked(us) {
-	legalMoves.push(moves[$i]);
-      }
-      self!undoMove();
-    }
-    return legalMoves
-  }
-  method move($move, % (:$strict = False) = {}) {
-    my %moveObj;
-    if $move ~~ Str {
-      %moveObj := self!moveFromSan($move, $strict);
-    } elsif $move ~~ Hash {
-      my \moves = self!moves();
-      loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
-	if $move<from> eq algebraic(moves[$i]<from>) && $move<to> eq algebraic(moves[$i]<to>) && (!moves[$i]<promotion>:exists || $move<promotion> eq moves[$i]<promotion>) {
-	  %moveObj := moves[$i];
-	  last;
-	}
-      }
-    }
-    if !%moveObj {
-      if $move ~~ Str {
-	die "Invalid move: $move";
-      } else {
-	die "Invalid move: {$move.raku}";
-      }
-    }
-    my \prettyMove = Move.new(self, %moveObj);
-    self!makeMove(%moveObj);
-    self!incPositionCount(prettyMove.after);
-    return prettyMove;
-  }
-  method !push($move) {
-    @!history.push: {
-      :$move,
-      :%!kings,
-      :$!turn,
-      :%!castling,
-      :$!epSquare,
-      :$!halfMoves,
-      :$!moveNumber
-    }
-  }
-  method !makeMove(Move $move) {
-    my \us = $!turn;
-    my \them = swapColor(us);
-    self!push($move);
-    @!board[$move.to] = @!board[$move.from];
-    @!board[$move.from]:delete;
-    if $move.flags +& %BITS<EP_CAPTURE> {
-      if $!turn eq BLACK {
-	@!board[$move.to - 16]:delete;
-      } else {
-	@!board[$move.to + 16]:delete;
-      }
-    }
-    if $move.promotion {
-      @!board[$move.to] = { type => $move.promotion, color => us }
-    }
-    if @!board[$move.to]<type> eq KING {
-      %!kings{us} = $move.to;
-      if $move.flags +& %BITS<KSIDE_CASTLE> {
-	my \castlingTo = $move.to - 1;
-	my \castlingFrom = $move.to + 1;
-        @!board[castlingTo] = @!board[castlingFrom];
-	@!board[castlingFrom]:delete;
-      } elsif $move.flags +& %BITS<QSIDE_CASTLE> {
-	my \castlingTo = $move.to + 1;
-	my \castlingFrom = $move.to - 2;
-        @!board[castlingTo] = @!board[castlingFrom];
-	@!board[castlingFrom]:delete;
-      }
-      %!castling{us} = 0;
-    }
-    if %!castling{us} {
-      loop (my ($i, \len) = 0, %ROOKS{us}.elems; $i < len; $i++) {
-	if $move.from == %ROOKS{us}[$i]<square> && %!castling{us} +& %ROOKS{us}[$i]<flag> {
-	  %!castling{us} +^= %ROOKS{us}[$i]<flag>;
-	  last;
-	}
-      }
-    }
-    if %!castling{them} {
-      loop (my ($i, \len) = 0, %ROOKS{them}.elems; $i < len; $i++) {
-	if $move.to == %ROOKS{them}[$i]<square> && %!castling{them} +& %ROOKS{them}[$i]<flag> {
-	  %!castling{them} +^= %ROOKS{them}[$i]<flag>;
-	  last;
-	}
-      }
-    }
-    if $move.flags +& %BITS<BIG_PAWN> {
-      if us eq BLACK {
-	$!epSquare = $move.to - 16;
-      } else {
-	$!epSquare = $move.to + 16;
-      }
-    } else {
-      $!epSquare = EMPTY
-    }
-    if $move.piece eq PAWN {
-      $!halfMoves = 0;
-    } elsif $move.flags +& (%BITS<CAPTURE> +| %BITS<EP_CAPTURE>) {
-      $!halfMoves = 0;
-    } else {
-      $!halfMoves++;
-    }
-    if us eq BLACK {
-      $!moveNumber++;
-    }
-    $!turn = them;
-  }
-  method undo {
-    my \move = self!undoMove;
-    if \move {
-      my \prettyMove = Move.new(self, move);
-      self!decPositionCount(prettyMove.after);
-      return prettyMove;
-    }
-    return Nil
-  }
-  method !undoMove {
-    my \old = @!history.pop;
-    if old === void0 {
-      return Nil
-    }
-    my \move = old<move>;
-    %!kings := old<kings>;
-    $!turn  = old<turn>;
-    %!castling := old<castling>;
-    $!epSquare = old<epSquare>;
-    $!halfMoves = old<halfMoves>;
-    $!moveNumber = old<moveNumber>;
-    my \us = $!turn;
-    my \them = swapColor(us);
-    @!board[move.from] = @!board[move.to];
-    @!board[move.from]<type> = move.piece;
-    @!board[move.to]:delete;
-    if move.captured {
-      if move.flags +& %BITS<EP_CAPTURE> {
-	my $index;
-	if us eq BLACK {
-	  $index = move.to - 16;
-	} else {
-	  $index = move.to + 16;
-	}
-	@!board[$index] = { type => PAWN, color => them };
-      } else {
-	@!board[move.to] = { type => move.captured, color => them };
-      }
-    }
-    if move.flags +& (%BITS<KSIDE_CASTLE> +| %BITS<QSIDE_CASTLE>) {
-      my ($castlingTo, $castlingFrom);
-      if move.flags +& %BITS<KSIDE_CASTLE> {
-	$castlingTo = move.to + 1;
-	$castlingFrom = move.to - 1;
-      } else {
-	$castlingTo = move.to - 2;
-	$castlingFrom = move.to + 1;
-      }
-      @!board[$castlingTo] = @!board[$castlingFrom]:delete;
-
-    }
-    return move;
-  }
-  method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
-    my \result = [];
-    my $headerExists = False;
-    for %!header.keys -> $i {
-      result.push: qq{[$i "{%!header[$i]}"]$newline};
-      FIRST $headerExists = True;
-    }
-    if $headerExists && @!history.elems {
-      result.push: $newline;
-    }
-    my &appendComment = -> $moveString2 is rw {
-      my $comment = %!comments{self.fen};
-      if $comment.defined {
-	my $delimiter = $moveString2.chars > 0 ?? ' ' !! '';
-	$moveString2 = "$moveString2$delimiter$comment";
-      }
-      return $moveString2;
-    }
-    my \reversedHistory = [];
-    while @!history.elems > 0 {
-      reversedHistory.push: self!undoMove;
-    }
-    my \moves = [];
-    my $moveString = '';
-    if reversedHistory.elems == 0 {
-      moves.push: &appendComment('');
-    }
-    while reversedHistory.elems > 0 {
-      $moveString = appendComment($moveString);
-      my \move = reversedHistory.pop;
-      if !move {
+      if $move<from> eq algebraic(moves[$i]<from>) && $move<to> eq algebraic(moves[$i]<to>) && (!moves[$i]<promotion>:exists || $move<promotion> eq moves[$i]<promotion>) {
+	%moveObj := moves[$i];
 	last;
       }
-      if !@!history.elems && move.color eq 'b' {
-	my $prefix = "$!moveNumber. ...";
-	$moveString = $moveString eq '' ?? "$moveString $prefix" !! $prefix;
-      } elsif move.color eq 'w' {
-	if $moveString.chars {
-	  moves.push: $moveString;
-	}
-	$moveString = $!moveNumber ~ '.';
-      }
-      $moveString ~= ' ' ~ self!moveToSan(move, self!moves({ :legal }));
-      self!makeMove(move);
     }
-    if $moveString.chars {
-      moves.push(appendComment($moveString));
-    }
-    if %!header<Result>:exists {
-      moves.push: %!header<Result>;
-    }
-    if $maxWidth == 0 {
-      return result.join('') + moves.join(' ');
-    }
-    my &strip = sub {
-      if result.elems > 0 && result.tail eq ' ' {
-	result.pop();
-	return True;
-      }
-      return False;
-    }
-    my &wrapComment = sub ($width, $move) {
-      for $move.words -> $token {
-	if !$token {
-	  next;
-	}
-	if $width + $token.chars > $maxWidth {
-	  while &strip() {
-	    $width--;
-	  }
-	  result.push($newline);
-	  $width = 0;
-	}
-	result.push($token);
-	$width += $token.chars;
-	result.push(' ');
-	$width++;
-      }
-      return $width;
-    }
-    my $currentWidth = 0;
-    loop (my $i = 0; $i < moves.elems; $i++) {
-      if $currentWidth + moves[$i].chars > $maxWidth {
-	if moves[$i] ~~ /'{'/ {
-	  $currentWidth = wrapComment($currentWidth, moves[$i]);
-	  next;
-	}
-      }
-      if $currentWidth + moves[$i].chars > $maxWidth && $i !== 0 {
-	if result.tail eq ' ' {
-	  result.pop;
-	}
-	result.push($newline);
-	$currentWidth = 0;
-      } elsif $i !== 0 {
-	result.push(' ');
-	$currentWidth++;
-      }
-      result.push(moves[$i]);
-      $currentWidth += moves[$i].chars;
-    }
-    return result.join('');
   }
-  # deprecated Use `setHeader` and `getHeaders` instead
-  method header(*@args) {
-    loop (my $i = 0; $i < @args.elems; $i += 2) {
-      if @args[$i] ~~ Str && @args[$i+1] ~~ Str {
-	%!header{@args[$i]} = @args[$i + 1];
+  if !%moveObj {
+    if $move ~~ Str {
+      die "Invalid move: $move";
+    } else {
+      die "Invalid move: {$move.raku}";
+    }
+  }
+  my \prettyMove = Move.new(self, %moveObj);
+  self!makeMove(%moveObj);
+  self!incPositionCount(prettyMove.after);
+  return prettyMove;
+}
+method !push($move) {
+  @!history.push: {
+    :$move,
+    :%!kings,
+    :$!turn,
+    :%!castling,
+    :$!epSquare,
+    :$!halfMoves,
+    :$!moveNumber
+  }
+}
+method !makeMove(Move $move) {
+  my \us = $!turn;
+  my \them = swapColor(us);
+  self!push($move);
+  @!board[$move.to] = @!board[$move.from];
+  @!board[$move.from]:delete;
+  if $move.flags +& %BITS<EP_CAPTURE> {
+    if $!turn eq BLACK {
+      @!board[$move.to - 16]:delete;
+    } else {
+      @!board[$move.to + 16]:delete;
+    }
+  }
+  if $move.promotion {
+    @!board[$move.to] = { type => $move.promotion, color => us }
+  }
+  if @!board[$move.to]<type> eq KING {
+    %!kings{us} = $move.to;
+    if $move.flags +& %BITS<KSIDE_CASTLE> {
+      my \castlingTo = $move.to - 1;
+      my \castlingFrom = $move.to + 1;
+      @!board[castlingTo] = @!board[castlingFrom];
+      @!board[castlingFrom]:delete;
+    } elsif $move.flags +& %BITS<QSIDE_CASTLE> {
+      my \castlingTo = $move.to + 1;
+      my \castlingFrom = $move.to - 2;
+      @!board[castlingTo] = @!board[castlingFrom];
+      @!board[castlingFrom]:delete;
+    }
+    %!castling{us} = 0;
+  }
+  if %!castling{us} {
+    loop (my ($i, \len) = 0, %ROOKS{us}.elems; $i < len; $i++) {
+      if $move.from == %ROOKS{us}[$i]<square> && %!castling{us} +& %ROOKS{us}[$i]<flag> {
+	%!castling{us} +^= %ROOKS{us}[$i]<flag>;
+	last;
       }
     }
-    return %!header;
   }
-  method setHeader($key, $value) {
-    %!header{$key} = $value;
-    return %!header;
+  if %!castling{them} {
+    loop (my ($i, \len) = 0, %ROOKS{them}.elems; $i < len; $i++) {
+      if $move.to == %ROOKS{them}[$i]<square> && %!castling{them} +& %ROOKS{them}[$i]<flag> {
+	%!castling{them} +^= %ROOKS{them}[$i]<flag>;
+	last;
+      }
+    }
   }
-  method removeHeader($key) {
-    if %!header{$key}:exists {
-      %!header{$key}:delete;
+  if $move.flags +& %BITS<BIG_PAWN> {
+    if us eq BLACK {
+      $!epSquare = $move.to - 16;
+    } else {
+      $!epSquare = $move.to + 16;
+    }
+  } else {
+    $!epSquare = EMPTY
+  }
+  if $move.piece eq PAWN {
+    $!halfMoves = 0;
+  } elsif $move.flags +& (%BITS<CAPTURE> +| %BITS<EP_CAPTURE>) {
+    $!halfMoves = 0;
+  } else {
+    $!halfMoves++;
+  }
+  if us eq BLACK {
+    $!moveNumber++;
+  }
+  $!turn = them;
+}
+method undo {
+  my \move = self!undoMove;
+  if \move {
+    my \prettyMove = Move.new(self, move);
+    self!decPositionCount(prettyMove.after);
+    return prettyMove;
+  }
+  return Nil
+}
+method !undoMove {
+  my \old = @!history.pop;
+  if old === void0 {
+    return Nil
+  }
+  my \move = old<move>;
+  %!kings := old<kings>;
+  $!turn  = old<turn>;
+  %!castling := old<castling>;
+  $!epSquare = old<epSquare>;
+  $!halfMoves = old<halfMoves>;
+  $!moveNumber = old<moveNumber>;
+  my \us = $!turn;
+  my \them = swapColor(us);
+  @!board[move.from] = @!board[move.to];
+  @!board[move.from]<type> = move.piece;
+  @!board[move.to]:delete;
+  if move.captured {
+    if move.flags +& %BITS<EP_CAPTURE> {
+      my $index;
+      if us eq BLACK {
+	$index = move.to - 16;
+      } else {
+	$index = move.to + 16;
+      }
+      @!board[$index] = { type => PAWN, color => them };
+    } else {
+      @!board[move.to] = { type => move.captured, color => them };
+    }
+  }
+  if move.flags +& (%BITS<KSIDE_CASTLE> +| %BITS<QSIDE_CASTLE>) {
+    my ($castlingTo, $castlingFrom);
+    if move.flags +& %BITS<KSIDE_CASTLE> {
+      $castlingTo = move.to + 1;
+      $castlingFrom = move.to - 1;
+    } else {
+      $castlingTo = move.to - 2;
+      $castlingFrom = move.to + 1;
+    }
+    @!board[$castlingTo] = @!board[$castlingFrom]:delete;
+
+  }
+  return move;
+}
+method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
+  my \result = [];
+  my $headerExists = False;
+  for %!header.keys -> $i {
+    result.push: qq{[$i "{%!header[$i]}"]$newline};
+    FIRST $headerExists = True;
+  }
+  if $headerExists && @!history.elems {
+    result.push: $newline;
+  }
+  my &appendComment = -> $moveString2 is rw {
+    my $comment = %!comments{self.fen};
+    if $comment.defined {
+      my $delimiter = $moveString2.chars > 0 ?? ' ' !! '';
+      $moveString2 = "$moveString2$delimiter$comment";
+    }
+    return $moveString2;
+  }
+  my \reversedHistory = [];
+  while @!history.elems > 0 {
+    reversedHistory.push: self!undoMove;
+  }
+  my \moves = [];
+  my $moveString = '';
+  if reversedHistory.elems == 0 {
+    moves.push: &appendComment('');
+  }
+  while reversedHistory.elems > 0 {
+    $moveString = appendComment($moveString);
+    my \move = reversedHistory.pop;
+    if !move {
+      last;
+    }
+    if !@!history.elems && move.color eq 'b' {
+      my $prefix = "$!moveNumber. ...";
+      $moveString = $moveString eq '' ?? "$moveString $prefix" !! $prefix;
+    } elsif move.color eq 'w' {
+      if $moveString.chars {
+	moves.push: $moveString;
+      }
+      $moveString = $!moveNumber ~ '.';
+    }
+    $moveString ~= ' ' ~ self!moveToSan(move, self!moves({ :legal }));
+    self!makeMove(move);
+  }
+  if $moveString.chars {
+    moves.push(appendComment($moveString));
+  }
+  if %!header<Result>:exists {
+    moves.push: %!header<Result>;
+  }
+  if $maxWidth == 0 {
+    return result.join('') + moves.join(' ');
+  }
+  my &strip = sub {
+    if result.elems > 0 && result.tail eq ' ' {
+      result.pop();
       return True;
     }
     return False;
   }
-  method getHeaders {
-    %!header
-  }
-  method loadPgn($pgn is rw, % (:$strict = False, Regex :$newlineChar = rx/\n/) = {}) {
-    # sub mask($str) {
-    #   ...
-    # }
-    sub parsePgnHeader($header) {
-      my \headerObj = {};
-      my \headers2 = $header.split($newlineChar);
-      my $key = '';
-      my $value = '';
-      loop (my $i = 0; $i < headers2.chars; $i++) {
-        constant $regex = rx/^\s*[\s*(<[A..Za..z]>+)\s*\"(.*)\"\s*]\s*$/;
-	$key = headers2.subst($regex, $/[0]);
-	$value = headers2.subst($regex, $/[1]);
-	if $key.trim.chars > 0 {
-	  headerObj{$key} = $value;
-	}
+  my &wrapComment = sub ($width, $move) {
+    for $move.words -> $token {
+      if !$token {
+	next;
       }
-      return headerObj;
+      if $width + $token.chars > $maxWidth {
+	while &strip() {
+	  $width--;
+	}
+	result.push($newline);
+	$width = 0;
+      }
+      result.push($token);
+      $width += $token.chars;
+      result.push(' ');
+      $width++;
     }
-    $pgn = $pgn.trim;
-    ...
+    return $width;
   }
-  #`{{{
-  /*
-   * Convert a move from 0x88 coordinates to Standard Algebraic Notation
-   * (SAN)
-   *
-   * @param {boolean} strict Use the strict SAN parser. It will throw errors
-   * on overly disambiguated moves (see below):
-   *
-   * r1bqkbnr/ppp2ppp/2n5/1B1pP3/4P3/8/PPPP2PP/RNBQK1NR b KQkq - 2 4
-   * 4. ... Nge7 is overly disambiguated because the knight on c6 is pinned
-   * 4. ... Ne7 is technically the valid SAN
-   */
-  }}}
-  method !moveToSan(Move $move, @moves) {
-    my $output = '';
-    if $move.flags +& %BITS<KSIDE_CASTLE> {
-      $output = 'O-O';
-    } elsif $move.flags +& %BITS<QSIDE_CASTLE> {
-      $output = 'O-O-O';
+  my $currentWidth = 0;
+  loop (my $i = 0; $i < moves.elems; $i++) {
+    if $currentWidth + moves[$i].chars > $maxWidth {
+      if moves[$i] ~~ /'{'/ {
+	$currentWidth = wrapComment($currentWidth, moves[$i]);
+	next;
+      }
+    }
+    if $currentWidth + moves[$i].chars > $maxWidth && $i !== 0 {
+      if result.tail eq ' ' {
+	result.pop;
+      }
+      result.push($newline);
+      $currentWidth = 0;
+    } elsif $i !== 0 {
+      result.push(' ');
+      $currentWidth++;
+    }
+    result.push(moves[$i]);
+    $currentWidth += moves[$i].chars;
+  }
+  return result.join('');
+}
+# deprecated Use `setHeader` and `getHeaders` instead
+method header(*@args) {
+  loop (my $i = 0; $i < @args.elems; $i += 2) {
+    if @args[$i] ~~ Str && @args[$i+1] ~~ Str {
+      %!header{@args[$i]} = @args[$i + 1];
+    }
+  }
+  return %!header;
+}
+method setHeader($key, $value) {
+  %!header{$key} = $value;
+  return %!header;
+}
+method removeHeader($key) {
+  if %!header{$key}:exists {
+    %!header{$key}:delete;
+    return True;
+  }
+  return False;
+}
+method getHeaders {
+  %!header
+}
+method loadPgn($pgn is rw, % (:$strict = False, Regex :$newlineChar = rx/\n/) = {}) {
+  # sub mask($str) {
+  #   ...
+  # }
+  sub parsePgnHeader($header) {
+    my \headerObj = {};
+    my \headers2 = $header.split($newlineChar);
+    my $key = '';
+    my $value = '';
+    loop (my $i = 0; $i < headers2.chars; $i++) {
+      constant $regex = rx/^\s*[\s*(<[A..Za..z]>+)\s*\"(.*)\"\s*]\s*$/;
+      $key = headers2.subst($regex, $/[0]);
+      $value = headers2.subst($regex, $/[1]);
+      if $key.trim.chars > 0 {
+	headerObj{$key} = $value;
+      }
+    }
+    return headerObj;
+  }
+  $pgn = $pgn.trim;
+  ...
+}
+#`[[[
+/*
+ * Convert a move from 0x88 coordinates to Standard Algebraic Notation
+ * (SAN)
+ *
+ * @param {boolean} strict Use the strict SAN parser. It will throw errors
+ * on overly disambiguated moves (see below):
+ *
+ * r1bqkbnr/ppp2ppp/2n5/1B1pP3/4P3/8/PPPP2PP/RNBQK1NR b KQkq - 2 4
+ * 4. ... Nge7 is overly disambiguated because the knight on c6 is pinned
+ * 4. ... Ne7 is technically the valid SAN
+ */
+]]]
+method !moveToSan(Move $move, @moves) {
+  my $output = '';
+  if $move.flags +& %BITS<KSIDE_CASTLE> {
+    $output = 'O-O';
+  } elsif $move.flags +& %BITS<QSIDE_CASTLE> {
+    $output = 'O-O-O';
+  } else {
+    if $move.piece ne PAWN {
+      my \disambiguator = getDisambiguator($move, @moves);
+      $output ~= $move.piece.uc ~ disambiguator;
+    }
+    if $move.flags +& (%BITS<CAPTURE> +| %BITS<EP_CAPTURE>) {
+      if $move.piece eq PAWN {
+	$output ~= algebraic($move.from)[0];
+      }
+      $output ~= 'x';
+    }
+    $output ~= algebraic($move.to);
+    if $move.promotion {
+      $output ~= '=' ~ $move.promotion.uc
+    }
+  }
+  self!makeMove($move);
+  if self.isCheck {
+    if self.isCheckmate {
+      $output ~= '#';
     } else {
-      if $move.piece ne PAWN {
-	my \disambiguator = getDisambiguator($move, @moves);
-	$output ~= $move.piece.uc ~ disambiguator;
-      }
-      if $move.flags +& (%BITS<CAPTURE> +| %BITS<EP_CAPTURE>) {
-	if $move.piece eq PAWN {
-	  $output ~= algebraic($move.from)[0];
-	}
-	$output ~= 'x';
-      }
-      $output ~= algebraic($move.to);
-      if $move.promotion {
-	$output ~= '=' ~ $move.promotion.uc
-      }
+      $output ~= '+';
     }
-    self!makeMove($move);
-    if self.isCheck {
-      if self.isCheckmate {
-	$output ~= '#';
-      } else {
-	$output ~= '+';
-      }
-    }
-    self!undoMove;
-    return $output;
   }
-  # convert a move from Standard Algebraic Notation (SAN) to 0x88 coordinates
-  method !moveFromSan(Move $move, $strict = False) {
-    my \cleanMove = strippedSan($move);
-    my $pieceType = inferPieceType(cleanMove);
-    my @moves = self!moves({ :legal, piece => $pieceType });
-    loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
-      if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)) {
-	return @moves[$i];
-      }
+  self!undoMove;
+  return $output;
+}
+# convert a move from Standard Algebraic Notation (SAN) to 0x88 coordinates
+method !moveFromSan(Move $move, $strict = False) {
+  my \cleanMove = strippedSan($move);
+  my $pieceType = inferPieceType(cleanMove);
+  my @moves = self!moves({ :legal, piece => $pieceType });
+  loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
+    if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)) {
+      return @moves[$i];
     }
-    if $strict {
-      return Nil
+  }
+  if $strict {
+    return Nil
+  }
+  my $piece = void0;
+  my $matches = void0;
+  my $from = void0;
+  my $to  = void0;
+  my $promotion = void0;
+  my $overlyDisambiguated = False;
+  $matches = cleanMove.match(/(<[pnbrqkPNBRQK]>)?(<[a..h]><[1..8]>)x?\-?(<[qrbnQRBN]>)?/);
+  if $matches {
+    $piece = ~$matches[0];
+    $from  = ~$matches[1];
+    $to    = ~$matches[2];
+    $promotion = $matches[3];
+    if $from.chars == 1 {
+      $overlyDisambiguated = True;
     }
-    my $piece = void0;
-    my $matches = void0;
-    my $from = void0;
-    my $to  = void0;
-    my $promotion = void0;
-    my $overlyDisambiguated = False;
-    $matches = cleanMove.match(/(<[pnbrqkPNBRQK]>)?(<[a..h]><[1..8]>)x?\-?(<[qrbnQRBN]>)?/);
+  } else {
+    $matches = cleanMove.match(/(<[pnbrqkPNBRQK]>)?(<[a..h]>?<[1..8]>?)x?\-?(<[a..h]><[1..8]>)(<[qrbnQRBN]>)?/);
     if $matches {
       $piece = ~$matches[0];
       $from  = ~$matches[1];
       $to    = ~$matches[2];
-      $promotion = $matches[3];
+      $promotion = ~$matches[3];
       if $from.chars == 1 {
 	$overlyDisambiguated = True;
       }
-    } else {
-      $matches = cleanMove.match(/(<[pnbrqkPNBRQK]>)?(<[a..h]>?<[1..8]>?)x?\-?(<[a..h]><[1..8]>)(<[qrbnQRBN]>)?/);
-      if $matches {
-	$piece = ~$matches[0];
-	$from  = ~$matches[1];
-	$to    = ~$matches[2];
-	$promotion = ~$matches[3];
-	if $from.chars == 1 {
-	  $overlyDisambiguated = True;
-	}
-      }
     }
-    $pieceType = inferPieceType(cleanMove);
-    @moves = self!moves: {
-      :legal,
-      :piece( $piece ?? $piece !! $pieceType )
-    };
-    if !$to {
-      return Nil
-    }
-    {
-      loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
-	if !$from {
-	  if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)).subst(/x/, '') {
-	    return @moves[$i];
-	  }
-	} elsif (!$piece || $piece.lc eq @moves[$i].piece) && %Ox88{$from} == @moves[$i].from && %Ox88{$to} == @moves[$i].to && (!$promotion || $promotion.lc eq @moves[$i].promotion) {
-	  return @moves[$i];
-	} elsif $overlyDisambiguated {
-	  my \square = algebraic(@moves[$i].from);
-	  if (!$piece || $piece.lc == @moves[i].piece) && %Ox88{$to} == @moves[i].to && ($from == square[0] || $from == square[1]) && (!$promotion || $promotion.lc == @moves[i].promotion) {
-	    return @moves[$i];
-	  }
-	}
-      }
-    }
+  }
+  $pieceType = inferPieceType(cleanMove);
+  @moves = self!moves: {
+    :legal,
+    :piece( $piece ?? $piece !! $pieceType )
+  };
+  if !$to {
     return Nil
   }
-  method board {
-    gather {
-      my @row = [];
-      loop (my $i = %Ox88<a8>; $i < %Ox88<h1>; $i++) {
-	if @!board[$i]:!exists {
-	  @row.push(Nil)
-	} else {
-	  @row.push: %(
-	    :square(algebraic($i)),
-	    :type(@!board[$i]<type>),
-	    :color(@!board[$i]<color>)
-	  )
+  {
+    loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
+      if !$from {
+	if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)).subst(/x/, '') {
+	  return @moves[$i];
 	}
-	if ($i + 1) +& 136 {
-	  take @row;
-	  @row = [];
-	  $i += 8
+      } elsif (!$piece || $piece.lc eq @moves[$i].piece) && %Ox88{$from} == @moves[$i].from && %Ox88{$to} == @moves[$i].to && (!$promotion || $promotion.lc eq @moves[$i].promotion) {
+	return @moves[$i];
+      } elsif $overlyDisambiguated {
+	my \square = algebraic(@moves[$i].from);
+	if (!$piece || $piece.lc == @moves[i].piece) && %Ox88{$to} == @moves[i].to && ($from == square[0] || $from == square[1]) && (!$promotion || $promotion.lc == @moves[i].promotion) {
+	  return @moves[$i];
 	}
       }
     }
   }
-  method squareColor($square) {
-    if %Ox88{$square}:exists {
-      my \sq = %Ox88{$square};
-      return (rank(sq) + file(sq)) % 2 == 0 ?? 'light' !! 'dark';
-    }
-  }
-  method history(% (:$verbose = False) = {}) {
-    my \reversedHistory = [];
-    my \moveHistory = [];
-    while @!history.elems > 0 {
-      reversedHistory.push(self!undoMove);
-    }
-    loop {
-      my \move = reversedHistory.pop;
-      if !move {
-	last;
-      }
-      if $verbose {
-	moveHistory.push: Move.new(self, move);
-      } else {
-	moveHistory.push: self!moveToSan(move, self!moves)
-      }
-      self!makeMove(move);
-    }
-    return moveHistory;
-  }
-  #`{{{
-  /*
-   * Keeps track of position occurrence counts for the purpose of repetition
-   * checking. All three methods (`_inc`, `_dec`, and `_get`) trim the
-   * irrelevent information from the fen, initialising new positions, and
-   * removing old positions from the record if their counts are reduced to 0.
-   */
-  }}}
-  method !getPositionCount($fen) {
-    my \trimmedFen = trimFen($fen);
-    %!positionCount{trimmedFen} // 0;
-  }
-  method !incPositionCount($fen) {
-    my \trimmedFen = trimFen($fen);
-    if %!positionCount{trimmedFen} === void0 {
-      %!positionCount{trimmedFen} = 0
-    }
-    %!positionCount{trimmedFen} += 1;
-  }
-  method !decPositionCount($fen) {
-    my \trimmedFen = trimFen($fen);
-    if %!positionCount{trimmedFen} == 1 {
-      %!positionCount{trimmedFen}:delete
-    } else {
-      %!positionCount{trimmedFen} -= 1;
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-	
-
+  return Nil
 }
+method board {
+  gather {
+    my @row = [];
+    loop (my $i = %Ox88<a8>; $i < %Ox88<h1>; $i++) {
+      if @!board[$i]:!exists {
+	@row.push(Nil)
+      } else {
+	@row.push: %(
+	  :square(algebraic($i)),
+	  :type(@!board[$i]<type>),
+	  :color(@!board[$i]<color>)
+	)
+      }
+      if ($i + 1) +& 136 {
+	take @row;
+	@row = [];
+	$i += 8
+      }
+    }
+  }
+}
+method squareColor($square) {
+  if %Ox88{$square}:exists {
+    my \sq = %Ox88{$square};
+    return (rank(sq) + file(sq)) % 2 == 0 ?? 'light' !! 'dark';
+  }
+}
+method history(% (:$verbose = False) = {}) {
+  my \reversedHistory = [];
+  my \moveHistory = [];
+  while @!history.elems > 0 {
+    reversedHistory.push(self!undoMove);
+  }
+  loop {
+    my \move = reversedHistory.pop;
+    if !move {
+      last;
+    }
+    if $verbose {
+      moveHistory.push: Move.new(self, move);
+    } else {
+      moveHistory.push: self!moveToSan(move, self!moves)
+    }
+    self!makeMove(move);
+  }
+  return moveHistory;
+}
+#`[[[
+/*
+ * Keeps track of position occurrence counts for the purpose of repetition
+ * checking. All three methods (`_inc`, `_dec`, and `_get`) trim the
+ * irrelevent information from the fen, initialising new positions, and
+ * removing old positions from the record if their counts are reduced to 0.
+ */
+]]]
+method !getPositionCount($fen) {
+  my \trimmedFen = trimFen($fen);
+  %!positionCount{trimmedFen} // 0;
+}
+method !incPositionCount($fen) {
+  my \trimmedFen = trimFen($fen);
+  if %!positionCount{trimmedFen} === void0 {
+    %!positionCount{trimmedFen} = 0
+  }
+  %!positionCount{trimmedFen} += 1;
+}
+method !decPositionCount($fen) {
+  my \trimmedFen = trimFen($fen);
+  if %!positionCount{trimmedFen} == 1 {
+    %!positionCount{trimmedFen}:delete
+  } else {
+    %!positionCount{trimmedFen} -= 1;
+  }
+}
+
 # vi: shiftwidth=2 nu
