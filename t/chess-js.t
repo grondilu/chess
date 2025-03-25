@@ -62,13 +62,13 @@ subtest 'En Passant' => {
 
 subtest 'Promotion' => {
     plan 4;
-    my $game = Chess::JS.new('8/2P5/8/8/8/8/8/8 w - - 0 1');
+    my $game = Chess::JS.new('8/2P5/8/8/8/8/8/k6K w - - 0 1');
     my $moves = $game.moves({:verbose});
-    ok $moves.grep(*.promotion eq 'q'), 'Promotion to queen available';
+    ok $moves.grep({ (.promotion // '') eq 'q'}), 'Promotion to queen available';
     my $promote = $game.move('c8=Q');
     is $promote.san, 'c8=Q', 'SAN for promotion';
     ok $promote.flags.contains('p'), 'Flags contains "p"';
-    is $game.fen, '2Q5/8/8/8/8/8/8/8 b - - 0 1', 'FEN after promotion';
+    is $game.fen, '2Q5/8/8/8/8/8/8/k6K b - - 0 1', 'FEN after promotion';
 }
 
 subtest 'Game State' => {
@@ -79,10 +79,10 @@ subtest 'Game State' => {
     $game = Chess::JS.new('rnb1kbnr/pppp1ppp/8/4p3/5PPq/8/PPPPP2P/RNBQKBNR b KQkq - 0 3');
     ok !$game.isCheck, 'Black is not in check';
 
-    $game = Chess::JS.new('8/8/8/8/8/8/8/8 w - - 0 1');
+    $game = Chess::JS.new('7K/8/6q1/8/8/8/8/k7 w - - 0 1');
     ok $game.isStalemate, 'Stalemate for White';
 
-    $game = Chess::JS.new('8/8/8/8/8/8/8/8 b - - 0 1');
+    $game = Chess::JS.new('7k/8/6Q1/8/8/8/8/K7 b - - 0 1');
     ok $game.isStalemate, 'Stalemate for Black';
 }
 
@@ -104,6 +104,19 @@ subtest 'PGN Generation' => {
     $game.move($_) for <e4 e5 Nf3 Nc6 Bb5>;
     is $game.pgn({ :maxWidth(8) }), "1. e4 e5\n2. Nf3 Nc6\n3. Bb5", 'PGN with wrapping';
 }
+
+subtest 'Promotion with Check' => {
+    plan 5;
+    my $game = Chess::JS.new('7k/5P2/6p1/8/8/8/8/4K3 w - - 0 1');
+    my $moves = $game.moves({:verbose});
+    ok $moves.elems > 0, 'Moves generated';
+    ok $moves.grep(*.promotion eq 'q'), 'Promotion to queen available';
+    ok $moves.grep(*.san eq 'f8=Q+'), 'f8=Q+ is a legal move';
+    my $promote = $game.move('f8=Q+');
+    ok $promote, 'Move f8=Q+ accepted';
+    is $game.fen, '5Q1k/8/6p1/8/8/8/8/4K3 b - - 0 1', 'FEN after promotion with check';
+}
+
 done-testing;
 
 # vi: shiftwidth=4 nowrap
