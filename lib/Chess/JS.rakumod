@@ -240,7 +240,8 @@ class Move {
     my \toAlgebraic   = algebraic($to);
     $!from = fromAlgebraic;
     $!to   = toAlgebraic;
-    $!san = $chess._moveToSan(%internal, $chess.moves);
+    my @legal-moves = $chess._moves: { :legal };
+    $!san = $chess._moveToSan(%internal, @legal-moves);
     $!lan  = fromAlgebraic ~ toAlgebraic;
     $!before = $chess.fen();
     $chess._makeMove(%internal);
@@ -333,7 +334,7 @@ method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
     when /k/ { %!castling<b> +|= %BITS<KSIDE_CASTLE>; proceed }
     when /q/ { %!castling<b> +|= %BITS<QSIDE_CASTLE>;         }
   }
-  $!epSquare = @tokens[3] eq '-' ?? EMPTY !! %Ox88[@tokens[3]];
+  $!epSquare = @tokens[3] eq '-' ?? EMPTY !! %Ox88{@tokens[3]};
   $!halfMoves = @tokens[4].Int;
   $!moveNumber = @tokens[5].Int;
   self!updateSetup($fen);
@@ -440,9 +441,9 @@ method get(\square) {
 }
 method put(% (:$type, :$color), \square) {
   if self!put({ :$type, :$color }, square) {
-    #self!updateCastlingRights();
-    #self!updateEnPassantSquare();
-    #self!updateSetup(self.fen());
+    self!updateCastlingRights();
+    self!updateEnPassantSquare();
+    self!updateSetup(self.fen());
     return True;
   }
   return False;
@@ -593,10 +594,10 @@ method inCheck {
   self.isCheck();
 }
 method isCheckmate {
-  self.isCheck() && self!moves().elems == 0
+  self.isCheck() && self._moves().elems == 0
 }
 method isStalemate {
-  !self.isCheck && self!moves().elems == 0
+  !self.isCheck && self._moves().elems == 0
 }
 method isInsufficientMaterial {
   my \pieces = {
@@ -657,14 +658,14 @@ method isGameOver {
   self.isCheckmate || self.isStalemate || self.isDraw
 }
 method moves(% (:$verbose = False, :$square = void0, :$piece = void0) = {}) {
-  my \moves = self!moves({ :$square, :$piece });
+  my \moves = self._moves({ :$square, :$piece });
   if $verbose {
     return moves.map( -> \move { Move.new(self, move) } );
   } else {
     return moves.map( -> \move { self._moveToSan(move, moves) } )
   }
 }
-method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
+method _moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
   my \forSquare = $square.defined ?? $square.toLowerCase !! void0;
   my \forPiece = $piece.defined ?? $piece.lc !! $piece;
   my \moves = [];
@@ -737,7 +738,7 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
       }
     }
   }
-  if forPiece === void0 || forPiece eq KING {
+  if !forPiece.defined  || forPiece eq KING {
     if !$singleSquare || $lastSquare == %!kings{us} {
       if %!castling{us} +& %BITS<KSIDE_CASTLE> {
 	my \castlingFrom = %!kings{us};
@@ -773,7 +774,7 @@ method move($move, % (:$strict = False) = {}) {
   if $move ~~ Str {
     %moveObj := self!moveFromSan($move, $strict);
   } elsif $move ~~ Hash {
-    my \moves = self!moves();
+    my \moves = self._moves();
     loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
       if $move<from> eq algebraic(moves[$i]<from>) && $move<to> eq algebraic(moves[$i]<to>) && (!moves[$i]<promotion>:exists || $move<promotion> eq moves[$i]<promotion>) {
 	%moveObj := moves[$i];
@@ -796,13 +797,18 @@ method move($move, % (:$strict = False) = {}) {
 method !push($move) {
   @!history.push: {
     :$move,
-    :%!kings,
+    :kings(%!kings.clone),
     :$!turn,
-    :%!castling,
+    :castling(%!castling.clone),
     :$!epSquare,
     :$!halfMoves,
     :$!moveNumber
   }
+}
+method debug {
+  note %(
+    :%!castling
+  )
 }
 method _makeMove($move) {
   my \us = $!turn;
@@ -883,7 +889,7 @@ method undo {
 }
 method _undoMove {
   my \old = @!history.pop;
-  if old === void0 {
+  if !old.defined {
     return Nil
   }
   my \move = old<move>;
@@ -967,7 +973,7 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
       }
       $moveString = $!moveNumber ~ '.';
     }
-    $moveString ~= ' ' ~ self._moveToSan(move, self!moves({ :legal }));
+    $moveString ~= ' ' ~ self._moveToSan(move, self._moves({ :legal }));
     self._makeMove(move);
   }
   if $moveString.chars {
@@ -1123,7 +1129,7 @@ method _moveToSan($move, @moves) {
 method !moveFromSan($move, $strict = False) {
   my \cleanMove = strippedSan($move);
   my $pieceType = inferPieceType(cleanMove);
-  my @moves = self!moves({ :legal, piece => $pieceType });
+  my @moves = self._moves({ :legal, piece => $pieceType });
   loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
     if cleanMove eq strippedSan(self._moveToSan(@moves[$i], @moves)) {
       return @moves[$i];
@@ -1160,7 +1166,7 @@ method !moveFromSan($move, $strict = False) {
     }
   }
   $pieceType = inferPieceType(cleanMove);
-  @moves = self!moves: {
+  @moves = self._moves: {
     :legal,
     :piece( $piece ?? $piece !! $pieceType )
   };
@@ -1209,7 +1215,7 @@ method ascii {
   return $s;
 }
 method perft($depth) {
-  my @moves = self!moves({ :!legal });
+  my @moves = self._moves({ :!legal });
   #note "depth=$depth, moves: {@moves.map({ algebraic(.<from>) ~ algebraic(.<to>)})}";
   my $nodes = 0;
   my $color = $!turn;
@@ -1268,7 +1274,7 @@ method history(% (:$verbose = False) = {}) {
     if $verbose {
       moveHistory.push: Move.new(self, move);
     } else {
-      moveHistory.push: self._moveToSan(move, self!moves)
+      moveHistory.push: self._moveToSan(move, self._moves)
     }
     self._makeMove(move);
   }
