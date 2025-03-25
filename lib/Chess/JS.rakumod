@@ -25,6 +25,8 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 }}}
+class Move {...}
+trusts Move;
 
 constant WHITE  = 'w';
 constant BLACK  = 'b';
@@ -240,13 +242,12 @@ class Move {
     my \toAlgebraic   = algebraic($to);
     $!from = fromAlgebraic;
     $!to   = toAlgebraic;
-    my @legal-moves = $chess._moves: { :legal };
-    $!san = $chess._moveToSan(%internal, @legal-moves);
+    $!san = $chess!Chess::JS::moveToSan(%internal, $chess!Chess::JS::moves: { :legal });
     $!lan  = fromAlgebraic ~ toAlgebraic;
     $!before = $chess.fen();
-    $chess._makeMove(%internal);
+    $chess!Chess::JS::makeMove(%internal);
     $!after = $chess.fen();
-    $chess._undoMove;
+    $chess!Chess::JS::undoMove;
     $!flags = '';
     for %BITS.keys -> $flag {
       if %BITS{$flag} +& $flags {
@@ -389,7 +390,7 @@ method fen {
       }
       my \color = $!turn;
       if @!board[square] && @!board[square]<color> eq color && @!board[square]<type> eq PAWN {
-	self._makeMove: {
+	self!makeMove: {
 	  :color(color),
 	  :from(square),
 	  :to($!epSquare),
@@ -398,7 +399,7 @@ method fen {
 	  :flags(%BITS<EP_CAPTURE>)
 	};
 	my \isLegal = !self!isKingAttacked(color);
-	self._undoMove();
+	self!undoMove();
 	if isLegal {
 	  $epSquare = algebraic($!epSquare);
 	  last;
@@ -594,10 +595,10 @@ method inCheck {
   self.isCheck();
 }
 method isCheckmate {
-  self.isCheck() && self._moves().elems == 0
+  self.isCheck() && self!moves().elems == 0
 }
 method isStalemate {
-  !self.isCheck && self._moves().elems == 0
+  !self.isCheck && self!moves().elems == 0
 }
 method isInsufficientMaterial {
   my \pieces = {
@@ -658,14 +659,14 @@ method isGameOver {
   self.isCheckmate || self.isStalemate || self.isDraw
 }
 method moves(% (:$verbose = False, :$square = void0, :$piece = void0) = {}) {
-  my \moves = self._moves({ :$square, :$piece });
+  my \moves = self!moves({ :$square, :$piece });
   if $verbose {
     return moves.map( -> \move { Move.new(self, move) } );
   } else {
-    return moves.map( -> \move { self._moveToSan(move, moves) } )
+    return moves.map( -> \move { self!moveToSan(move, moves) } )
   }
 }
-method _moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
+method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
   my \forSquare = $square.defined ?? $square.toLowerCase !! void0;
   my \forPiece = $piece.defined ?? $piece.lc !! $piece;
   my \moves = [];
@@ -761,11 +762,11 @@ method _moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
   }
   my \legalMoves = [];
   loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
-    self._makeMove(moves[$i]);
+    self!makeMove(moves[$i]);
     if !self!isKingAttacked(us) {
       legalMoves.push(moves[$i]);
     }
-    self._undoMove();
+    self!undoMove();
   }
   return legalMoves
 }
@@ -774,7 +775,7 @@ method move($move, % (:$strict = False) = {}) {
   if $move ~~ Str {
     %moveObj := self!moveFromSan($move, $strict);
   } elsif $move ~~ Hash {
-    my \moves = self._moves();
+    my \moves = self!moves();
     loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
       if $move<from> eq algebraic(moves[$i]<from>) && $move<to> eq algebraic(moves[$i]<to>) && (!moves[$i]<promotion>:exists || $move<promotion> eq moves[$i]<promotion>) {
 	%moveObj := moves[$i];
@@ -790,7 +791,7 @@ method move($move, % (:$strict = False) = {}) {
     }
   }
   my \prettyMove = Move.new(self, %moveObj);
-  self._makeMove(%moveObj);
+  self!makeMove(%moveObj);
   self!incPositionCount(prettyMove.after);
   return prettyMove;
 }
@@ -805,12 +806,7 @@ method !push($move) {
     :$!moveNumber
   }
 }
-method debug {
-  note %(
-    :%!castling
-  )
-}
-method _makeMove($move) {
+method !makeMove($move) {
   my \us = $!turn;
   my \them = swapColor(us);
   self!push($move);
@@ -879,7 +875,7 @@ method _makeMove($move) {
   $!turn = them;
 }
 method undo {
-  my \move = self._undoMove;
+  my \move = self!undoMove;
   if \move {
     my \prettyMove = Move.new(self, move);
     self!decPositionCount(prettyMove.after);
@@ -887,7 +883,7 @@ method undo {
   }
   return Nil
 }
-method _undoMove {
+method !undoMove {
   my \old = @!history.pop;
   if !old.defined {
     return Nil
@@ -934,14 +930,14 @@ method _undoMove {
 method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
   my \result = [];
   my $headerExists = False;
-  for %!header.keys -> $i {
-    result.push: qq{[$i "{%!header[$i]}"]$newline};
+  for %!header.keys -> $key {
+    result.push: qq{[$key "%!header{$key}"]$newline};
     FIRST $headerExists = True;
   }
   if $headerExists && @!history.elems {
     result.push: $newline;
   }
-  my &appendComment = -> $moveString2 is rw {
+  my &appendComment = sub ($moveString2 is rw) {
     my $comment = %!comments{self.fen};
     if $comment.defined {
       my $delimiter = $moveString2.chars > 0 ?? ' ' !! '';
@@ -951,7 +947,7 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
   }
   my \reversedHistory = [];
   while @!history.elems > 0 {
-    reversedHistory.push: self._undoMove;
+    reversedHistory.push: self!undoMove;
   }
   my \moves = [];
   my $moveString = '';
@@ -964,17 +960,17 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
     if !move {
       last;
     }
-    if !@!history.elems && move.color eq 'b' {
-      my $prefix = "$!moveNumber. ...";
+    if !@!history.elems && move<color> eq 'b' {
+      my $prefix = "$!moveNumber...";
       $moveString = $moveString eq '' ?? "$moveString $prefix" !! $prefix;
-    } elsif move.color eq 'w' {
+    } elsif move<color> eq 'w' {
       if $moveString.chars {
 	moves.push: $moveString;
       }
       $moveString = $!moveNumber ~ '.';
     }
-    $moveString ~= ' ' ~ self._moveToSan(move, self._moves({ :legal }));
-    self._makeMove(move);
+      $moveString ~= ' ' ~ self!moveToSan(move, self!moves({ :legal }));
+    self!makeMove(move);
   }
   if $moveString.chars {
     moves.push(appendComment($moveString));
@@ -983,7 +979,7 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
     moves.push: %!header<Result>;
   }
   if $maxWidth == 0 {
-    return result.join('') + moves.join(' ');
+    return result.join('') ~ moves.join(' ');
   }
   my &strip = sub {
     if result.elems > 0 && result.tail eq ' ' {
@@ -1013,6 +1009,7 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
   }
   my $currentWidth = 0;
   loop (my $i = 0; $i < moves.elems; $i++) {
+    note moves[$i];
     if $currentWidth + moves[$i].chars > $maxWidth {
       if moves[$i] ~~ /'{'/ {
 	$currentWidth = wrapComment($currentWidth, moves[$i]);
@@ -1092,7 +1089,7 @@ method loadPgn($pgn is rw, % (:$strict = False, Regex :$newlineChar = rx/\n/) = 
  * 4. ... Ne7 is technically the valid SAN
  */
 ]]]
-method _moveToSan($move, @moves) {
+method !moveToSan($move, @moves) {
   my $output = '';
   if $move<flags> +& %BITS<KSIDE_CASTLE> {
     $output = 'O-O';
@@ -1114,7 +1111,7 @@ method _moveToSan($move, @moves) {
       $output ~= '=' ~ $move<promotion>.uc
     }
   }
-  self._makeMove($move);
+  self!makeMove($move);
   if self.isCheck {
     if self.isCheckmate {
       $output ~= '#';
@@ -1122,16 +1119,16 @@ method _moveToSan($move, @moves) {
       $output ~= '+';
     }
   }
-  self._undoMove;
+  self!undoMove;
   return $output;
 }
 # convert a move from Standard Algebraic Notation (SAN) to 0x88 coordinates
 method !moveFromSan($move, $strict = False) {
   my \cleanMove = strippedSan($move);
   my $pieceType = inferPieceType(cleanMove);
-  my @moves = self._moves({ :legal, piece => $pieceType });
+  my @moves = self!moves({ :legal, piece => $pieceType });
   loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
-    if cleanMove eq strippedSan(self._moveToSan(@moves[$i], @moves)) {
+    if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)) {
       return @moves[$i];
     }
   }
@@ -1166,7 +1163,7 @@ method !moveFromSan($move, $strict = False) {
     }
   }
   $pieceType = inferPieceType(cleanMove);
-  @moves = self._moves: {
+  @moves = self!moves: {
     :legal,
     :piece( $piece ?? $piece !! $pieceType )
   };
@@ -1176,7 +1173,7 @@ method !moveFromSan($move, $strict = False) {
   {
     loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
       if !$from {
-	if cleanMove eq strippedSan(self._moveToSan(@moves[$i], @moves)).subst(/x/, '') {
+	if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)).subst(/x/, '') {
 	  return @moves[$i];
 	}
       } elsif (!$piece || $piece.lc eq @moves[$i].piece) && %Ox88{$from} == @moves[$i].from && %Ox88{$to} == @moves[$i].to && (!$promotion || $promotion.lc eq @moves[$i].promotion) {
@@ -1215,12 +1212,12 @@ method ascii {
   return $s;
 }
 method perft($depth) {
-  my @moves = self._moves({ :!legal });
+  my @moves = self!moves({ :!legal });
   #note "depth=$depth, moves: {@moves.map({ algebraic(.<from>) ~ algebraic(.<to>)})}";
   my $nodes = 0;
   my $color = $!turn;
   loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
-    self._makeMove(@moves[$i]);
+    self!makeMove(@moves[$i]);
     if !self!isKingAttacked($color) {
       if $depth - 1 > 0 {
 	$nodes += self.perft: $depth - 1;
@@ -1228,7 +1225,7 @@ method perft($depth) {
 	$nodes++;
       }
     }
-    self._undoMove();
+    self!undoMove();
   }
   return $nodes;
 }
@@ -1264,7 +1261,7 @@ method history(% (:$verbose = False) = {}) {
   my \reversedHistory = [];
   my \moveHistory = [];
   while @!history.elems > 0 {
-    reversedHistory.push(self._undoMove);
+    reversedHistory.push(self!undoMove);
   }
   loop {
     my \move = reversedHistory.pop;
@@ -1274,9 +1271,9 @@ method history(% (:$verbose = False) = {}) {
     if $verbose {
       moveHistory.push: Move.new(self, move);
     } else {
-      moveHistory.push: self._moveToSan(move, self._moves)
+      moveHistory.push: self!moveToSan(move, self!moves)
     }
-    self._makeMove(move);
+    self!makeMove(move);
   }
   return moveHistory;
 }
@@ -1308,4 +1305,4 @@ method !decPositionCount($fen) {
   }
 }
 
-# vi: shiftwidth=2 nu
+# vi: shiftwidth=2 nu nowrap

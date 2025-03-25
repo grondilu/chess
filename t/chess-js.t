@@ -3,9 +3,7 @@ use Test;
 use Chess::JS;
 
 # Test suite begins
-plan 6; # Number of subtests
 
-# 1. Move Generation
 subtest 'Move Generation' => {
     my Chess::JS $game;
     sub prefix:<?>(@l) { @l.sort.join(':') }
@@ -21,7 +19,6 @@ subtest 'Move Generation' => {
     is ?$game.moves, ?<a6 a5 b6 b5 c6 c5 d6 d5 e6 e5 f6 f5 g6 g5 h6 h5 Na6 Nc6 Nf6 Nh6>, 'After 1. e4';
 }
 
-# 2. Move Execution and SAN Notation
 subtest 'Move Execution and SAN' => {
     plan 7;
     my $game = Chess::JS.new;
@@ -39,7 +36,6 @@ subtest 'Move Execution and SAN' => {
     is $game.fen, 'rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2', 'FEN after exd5';
 }
 
-# 3. Castling
 subtest 'Castling' => {
     plan 4;
     my $game = Chess::JS.new('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
@@ -52,7 +48,6 @@ subtest 'Castling' => {
     is $game.fen, 'r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1', 'FEN after O-O';
 }
 
-# 4. En Passant
 subtest 'En Passant' => {
     plan 4;
     my $game = Chess::JS.new('rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3');
@@ -65,7 +60,6 @@ subtest 'En Passant' => {
     is $game.fen, 'rnbqkbnr/ppp1p1pp/5P2/3p4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 3', 'FEN after en passant';
 }
 
-# 5. Promotion
 subtest 'Promotion' => {
     plan 4;
     my $game = Chess::JS.new('8/2P5/8/8/8/8/8/8 w - - 0 1');
@@ -77,7 +71,6 @@ subtest 'Promotion' => {
     is $game.fen, '2Q5/8/8/8/8/8/8/8 b - - 0 1', 'FEN after promotion';
 }
 
-# 6. Game State
 subtest 'Game State' => {
     plan 4;
     my $game = Chess::JS.new('rnb1kbnr/pppp1ppp/8/4p3/5PPq/8/PPPPP2P/RNBQKBNR w KQkq - 1 3');
@@ -93,6 +86,24 @@ subtest 'Game State' => {
     ok $game.isStalemate, 'Stalemate for Black';
 }
 
+subtest 'PGN Generation' => {
+    plan 3;
+    my $game = Chess::JS.new;
+    $game.move('e4');
+    $game.move('e5');
+    is $game.pgn, '1. e4 e5', 'Basic PGN';
+    
+    $game.setHeader('White', 'Alice');
+    $game.setHeader('Black', 'Bob');
+    is $game.pgn,
+	qq{[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5}|
+	qq{[Black "Bob"]\n[White "Alice"]\n\n1. e4 e5},
+	'PGN with headers';
+
+    $game = Chess::JS.new;
+    $game.move($_) for <e4 e5 Nf3 Nc6 Bb5>;
+    is $game.pgn({ :maxWidth(8) }), "1. e4 e5\n2. Nf3 Nc6\n3. Bb5", 'PGN with wrapping';
+}
 done-testing;
 
 # vi: shiftwidth=4 nowrap
