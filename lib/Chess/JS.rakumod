@@ -28,14 +28,14 @@ POSSIBILITY OF SUCH DAMAGE.
 class Move {...}
 trusts Move;
 
-constant WHITE  = 'w';
-constant BLACK  = 'b';
-constant PAWN   = 'p';
-constant KNIGHT = 'n';
-constant BISHOP = 'b';
-constant ROOK   = 'r';
-constant QUEEN  = 'q';
-constant KING   = 'k';
+constant WHITE  is export(:colors) = 'w';
+constant BLACK  is export(:colors) = 'b';
+constant PAWN   is export(:pieces) = 'p';
+constant KNIGHT is export(:pieces) = 'n';
+constant BISHOP is export(:pieces) = 'b';
+constant ROOK   is export(:pieces) = 'r';
+constant QUEEN  is export(:pieces) = 'q';
+constant KING   is export(:pieces) = 'k';
 
 constant DEFAULT_POSITION = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1};
 
@@ -53,7 +53,7 @@ constant %FLAGS =
   QSIDE_CASTLE => 'q'
   ;
 
-our constant @SQUARES = ([1..8] .reverse) X[R~] 'a'..'h';
+our constant @SQUARES is export(:squares) = ([1..8] .reverse) X[R~] 'a'..'h';
 constant %BITS =
   NORMAL       => 1,
   CAPTURE      => 2,
@@ -63,7 +63,7 @@ constant %BITS =
   KSIDE_CASTLE => 32,
   QSIDE_CASTLE => 64
   ;
-constant %Ox88 = (@SQUARES Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
+constant %Ox88 is export(:squares) = (@SQUARES Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
 constant %PAWN_OFFSETS = 
   b => [16, 32, 17, 15],
   w => [-16, -32, -17, -15]
@@ -1369,9 +1369,9 @@ method perft($depth) {
 
 method board {
   gather {
-    my @row = [];
-    loop (my $i = %Ox88<a8>; $i < %Ox88<h1>; $i++) {
-      if !@!board[$i] {
+    my @row;
+    loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
+      if !@!board[$i].defined {
 	@row.push(Nil)
       } else {
 	@row.push: %(
@@ -1382,11 +1382,10 @@ method board {
       }
       if ($i + 1) +& 136 {
 	take @row;
-	@row = [];
+	@row := [];
 	$i += 8
       }
     }
-    take @row;
   }
 }
 method squareColor($square) {
