@@ -1441,5 +1441,56 @@ method !decPositionCount($fen) {
     %!positionCount{trimmedFen} -= 1;
   }
 }
+method !pruneComments {
+  my @reversedHistory;
+  my %currentComments;
+  sub copyComments($fen) {
+    if %!comments{$fen}:exists {
+      %currentComments{$fen} = %!comments{$fen};
+    }
+  }
+  while @!history {
+    @reversedHistory.push: self!undoMove;
+  }
+  copyComments(self.fen);
+  loop {
+    last unless my $move = @reversedHistory.pop();
+    self!makeMove($move);
+    copyComments(self.fen);
+  }
+  %!comments := %currentComments
+}
+method getComment { %!comments{self.fen} }
+method setComment($comment) {
+  %!comments{self.fen} = $comment.trans: '{}' => '[]'
+}
+method removeComment { %!comments{self.fen}:delete }
+method getComments {
+  self!pruneComments;
+  %!comments.map: { %( fen => .key, comment => .value ) }
+}
+method setCastlingRights($color, %rights) {
+  for KING, QUEEN -> $side {
+    if %rights{$side}:exists {
+      if %rights{$side} {
+	%!castling{$color} +|= %SIDES{$side};
+      } else {
+	%!castling{$color} +&= +^%SIDES{$side};
+      }
+    }
+  }
+  self!updateCastlingRights;
+  my %result = self.getCastlingRights($color);
+  (!%rights{KING}.defined || %rights{KING} == %result{KING}) &&
+  (!%rights{QUEEN}.defined || %rights{QUEEN} == %result{QUEEN})
+}
+method getCastlingRights($color) {
+  %(
+    (KING) => %!castling{$color} +& %SIDES{KING} !== 0,
+    (QUEEN) => %!castling{$color} +& %SIDES{QUEEN} !== 0,
+  )
+}
+
+
 
 # vi: shiftwidth=2 nu nowrap
