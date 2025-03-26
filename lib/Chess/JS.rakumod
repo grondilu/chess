@@ -53,7 +53,7 @@ constant %FLAGS =
   QSIDE_CASTLE => 'q'
   ;
 
-constant @SQUARES = ([1..8] .reverse) X[R~] 'a'..'h';
+our constant @SQUARES = ([1..8] .reverse) X[R~] 'a'..'h';
 constant %BITS =
   NORMAL       => 1,
   CAPTURE      => 2,
@@ -563,8 +563,8 @@ method !updateEnPassantSquare {
     $!epSquare = EMPTY
   }
 }
-method !attacked(\color, \square, \verbose = False) {
-  my \attackers = [];
+method !attacked(\color, \square, Bool :$verbose) {
+  my @attackers;
   loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1> ; $i++) {
     if $i +& 136 {
       $i += 7;
@@ -582,19 +582,19 @@ method !attacked(\color, \square, \verbose = False) {
     if @ATTACKS[index] +& %PIECE_MASKS{$piece<type>} {
       if $piece<type> eq PAWN {
 	if difference > 0 && $piece<color> eq WHITE || difference ≤ 0 && $piece<color> eq BLACK {
-	  if !verbose {
+	  if !$verbose {
 	    return True;
 	  } else {
-	    attackers.push: algebraic($i)
+	    @attackers.push: algebraic($i)
 	  }
 	}
 	next;
       }
       if $piece<type> eq 'n'|'k' {
-	if !verbose {
+	if !$verbose {
 	  return True;
 	} else {
-	  attackers.push: algebraic($i);
+	  @attackers.push: algebraic($i);
 	  next;
 	}
       }
@@ -609,26 +609,26 @@ method !attacked(\color, \square, \verbose = False) {
 	$j += offset;
       }
       if !$blocked {
-	if !verbose {
+	if !$verbose {
 	  return True;
 	} else {
-	  attackers.push: algebraic($i);
+	  @attackers.push: algebraic($i);
 	  next;
 	}
       }
     }
   }
-  if verbose {
-    return attackers;
+  if $verbose {
+    return @attackers;
   } else {
     return False;
   }
 }
-method attackers(\square, \attackedBy) {
-  if !attackedBy {
-    return self!attacked($!turn, %Ox88[square], True);
+method attackers(\square, $attackedBy?) {
+  if !$attackedBy {
+    return self!attacked($!turn, %Ox88{square}, :verbose);
   } else {
-    return self!attacked(attackedBy, %Ox88[square], True);
+    return self!attacked($attackedBy, %Ox88{square}, :verbose);
   }
 }
 method !isKingAttacked(\color) {
@@ -1151,7 +1151,7 @@ method loadPgn($pgn, % (:$strict = False) = {}) {
     sub fromHex($s) {
         return '' unless $s.chars;
         my $encoded = '%' ~ $s.comb(/.. | . /).join('%');
-        URI::Encode::uri_decode($encoded); # Use URI::Encode inside the method
+        uri_decode($encoded); # Use URI::Encode inside the method
     }
 
     sub encodeComment($s) {
