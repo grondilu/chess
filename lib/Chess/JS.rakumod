@@ -1386,6 +1386,7 @@ method board {
 	$i += 8
       }
     }
+    take @row;
   }
 }
 method squareColor($square) {
