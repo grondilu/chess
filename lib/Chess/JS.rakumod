@@ -202,9 +202,9 @@ sub getDisambiguator($move, @moves) {
     if $sameRank > 0 && $sameFile > 0 {
       return algebraic($from);
     } elsif $sameFile > 0 {
-      return algebraic($from).substr(0, 1);
-    } else {
       return algebraic($from).substr(1, 1);
+    } else {
+      return algebraic($from).substr(0, 1);
     }
   }
   return '';
@@ -238,7 +238,7 @@ sub addMove(@moves, $color, $from, $to, $piece, $captured = void0, $flags = %BIT
 }
 sub inferPieceType($san) {
   my $pieceType = $san.substr(0, 1);
-  if 'a' lt $pieceType le 'h' {
+  if 'a' le $pieceType le 'h' {
     my @matches = $san.match(/<[a..h]>\d.*<[a..h]>\d/, :g);
     if @matches {
       return void0
@@ -283,15 +283,16 @@ class Move {
     $.after
   );
 
-  method new($chess, %internal) {
-    self.bless: :$chess, :%internal
+  method new($chess, %internal, :$debug = False) {
+    self.bless: :$chess, :%internal, :$debug
   }
-  submethod BUILD(:$chess, :%internal (:$!color, :$!piece, :$from, :$to, :$flags, :$!captured, :$!promotion)) {
+  submethod BUILD(:$chess, :%internal (:$!color, :$!piece, :$from, :$to, :$flags, :$!captured, :$!promotion), :$debug) {
     my $fromAlgebraic = algebraic($from);
     my $toAlgebraic   = algebraic($to);
     $!from = $fromAlgebraic;
     $!to   = $toAlgebraic;
-    $!san = $chess!Chess::JS::moveToSan(%internal, $chess!Chess::JS::moves: { :legal });
+    my @moves = $chess!Chess::JS::moves: { :legal }, :$debug;
+    $!san = $chess!Chess::JS::moveToSan(%internal, @moves);
     $!lan  = $fromAlgebraic ~ $toAlgebraic;
     $!before = $chess.fen();
     $chess!Chess::JS::makeMove(%internal);
@@ -491,9 +492,9 @@ method get(\square) {
 }
 method put(% (:$type, :$color), \square) {
   if self!put({ :$type, :$color }, square) {
-    self!updateCastlingRights();
-    self!updateEnPassantSquare();
-    self!updateSetup(self.fen());
+    self!updateCastlingRights;
+    self!updateEnPassantSquare;
+    self!updateSetup(self.fen);
     return True;
   }
   return False;
@@ -569,7 +570,7 @@ method !attacked(\color, \square, \verbose = False) {
       $i += 7;
       next;
     }
-    if !@!board[$i] || @!board[$i]<color> ne color {
+    if !@!board[$i] || (@!board[$i]<color> // '') ne color {
       next;
     }
     my $piece = @!board[$i];
@@ -715,9 +716,9 @@ method moves(% (:$verbose = False, :$square = void0, :$piece = void0) = {}) {
     return moves.map( -> \move { self!moveToSan(move, moves) } )
   }
 }
-method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
+method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}, :$debug = False) {
   my \forSquare = $square.defined ?? $square.toLowerCase !! void0;
-  my \forPiece = $piece.defined ?? $piece.lc !! $piece;
+  my \forPiece = $piece.defined ?? $piece.lc !! $piece<>;
   my \moves = [];
   my $us = $!turn;
   my $them = swapColor($us);
@@ -740,7 +741,7 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
     if !@!board[$from] || @!board[$from]<color> eq $them {
       next;
     }
-    my \type = @!board[$from]<type>;
+    my \type = @!board[$from]<type><>;
     my $to;
     if type eq PAWN {
       next if forPiece && forPiece ne type;
@@ -791,9 +792,13 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
   if !forPiece.defined  || forPiece eq KING {
     if !$singleSquare || $lastSquare == %!kings{$us} {
       if %!castling{$us} +& %BITS<KSIDE_CASTLE> {
-	my \castlingFrom = %!kings{$us};
+	my \castlingFrom = %!kings{$us}<>;
 	my \castlingTo = castlingFrom + 2;
-	if !@!board[castlingFrom + 1] && !@!board{castlingTo} && !self!attacked($them, %!kings{$us}) && !self!attacked($them, castlingFrom + 1) && !self!attacked($them, castlingTo) {
+	if !@!board[castlingFrom + 1] &&
+	  !@!board[castlingTo] &&
+	  !self!attacked($them, %!kings{$us}) &&
+	  !self!attacked($them, castlingFrom + 1)
+	  && !self!attacked($them, castlingTo) {
 	  addMove(moves, $us, %!kings{$us}, castlingTo, KING, void0, %BITS<KSIDE_CASTLE>);
 	}
       }
@@ -811,7 +816,6 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}) {
   }
   my \legalMoves = [];
   loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
-    my $debug;
     self!makeMove(moves[$i]);
     if !self!isKingAttacked($us) {
       legalMoves.push(moves[$i]);
@@ -840,10 +844,10 @@ method move($move, % (:$strict = False) = {}) {
       die "Invalid move: {$move.raku}";
     }
   }
-  my \prettyMove = Move.new(self, %moveObj);
+  my $prettyMove = Move.new(self, %moveObj<>);
   self!makeMove(%moveObj);
-  self!incPositionCount(prettyMove.after);
-  return prettyMove;
+  self!incPositionCount($prettyMove.after);
+  return $prettyMove;
 }
 method !push($move) {
   @!history.push: {
@@ -872,7 +876,7 @@ method !makeMove($move) {
   if $move<promotion> {
     @!board[$move<to>] = { type => $move<promotion>, color => $us }
   }
-  if @!board[$move<to>]<type> eq KING {
+  if (@!board[$move<to>]<type> // '') eq KING {
     %!kings{$us} = $move<to>;
     if $move<flags> +& %BITS<KSIDE_CASTLE> {
       my \castlingTo = $move<to> - 1;
@@ -991,7 +995,7 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
     my $comment = %!comments{self.fen};
     if $comment.defined {
       my $delimiter = $moveString2.chars > 0 ?? ' ' !! '';
-      $moveString2 = "$moveString2$delimiter$comment";
+      $moveString2 = "$moveString2$delimiter\{$comment\}";
     }
     return $moveString2;
   }
@@ -1006,21 +1010,21 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
   }
   while reversedHistory.elems > 0 {
     $moveString = appendComment($moveString);
-    my \move = reversedHistory.pop;
-    if !move {
+    my $move = reversedHistory.pop;
+    if !$move {
       last;
     }
-    if !@!history.elems && move<color> eq 'b' {
+    if !@!history.elems && $move<color> eq 'b' {
       my $prefix = "$!moveNumber...";
       $moveString = $moveString eq '' ?? "$moveString $prefix" !! $prefix;
-    } elsif move<color> eq 'w' {
+    } elsif $move<color> eq 'w' {
       if $moveString.chars {
 	moves.push: $moveString;
       }
       $moveString = $!moveNumber ~ '.';
     }
-      $moveString ~= ' ' ~ self!moveToSan(move, self!moves({ :legal }));
-    self!makeMove(move);
+    $moveString ~= ' ' ~ self!moveToSan($move, self!moves({ :legal }));
+    self!makeMove($move);
   }
   if $moveString.chars {
     moves.push(appendComment($moveString));
@@ -1103,28 +1107,111 @@ method removeHeader($key) {
 method getHeaders {
   %!header
 }
-method loadPgn($pgn is rw, % (:$strict = False, Regex :$newlineChar = rx/\n/) = {}) {
-  # sub mask($str) {
-  #   ...
-  # }
-  sub parsePgnHeader($header) {
-    my \headerObj = {};
-    my \headers2 = $header.split($newlineChar);
-    my $key = '';
-    my $value = '';
-    loop (my $i = 0; $i < headers2.chars; $i++) {
-      constant $regex = rx/^\s*[\s*(<[A..Za..z]>+)\s*\"(.*)\"\s*]\s*$/;
-      $key = headers2.subst($regex, $/[0]);
-      $value = headers2.subst($regex, $/[1]);
-      if $key.trim.chars > 0 {
-	headerObj{$key} = $value;
-      }
+
+method loadPgn($pgn, % (:$strict = False) = {}) {
+    use URI::Encode;
+
+    sub parse_pgn_header($header) {
+        my %headerObj;
+        for $header.lines -> $line { # Split headers with Raku's logical newlines
+            next unless $line ~~ /^\s* '[' \s* (<[A..Za..z]>+) \s* '"' (<-["]>*) '"' \s* ']' \s* $/;
+            my ($key, $value) = ~$0, ~$1;
+            %headerObj{$key} = $value if $key.trim.chars > 0;
+        }
+        %headerObj;
     }
-    return headerObj;
-  }
-  $pgn = $pgn.trim;
-  ...
+
+    return self.loadPgn($pgn.trim, { :$strict }) if $pgn ~~ /\s+$/;
+    my $headerRegex = rx/^ (\[ (\n | . )* \]) ( \s* \n ** 2 | \s* \n* $ ) /; # Match headers with logical \n
+    my $headerMatch = $pgn ~~ $headerRegex;
+    my $headerString = $headerMatch ?? ($headerMatch[0] // '') !! '';
+
+    self.reset;
+    my %headers = parse_pgn_header($headerString);
+    my $fen = '';
+    for %headers {
+        $fen = .value if .key eq 'fen'|'FEN';
+        self.setHeader(.key, .value);
+    }
+
+    if !$strict {
+        self.load($fen, :preserveHeaders) if $fen;
+    } else {
+        if %headers<SetUp>:exists && %headers<SetUp> eq '1' {
+            fail "Invalid PGN: FEN tag must be supplied with SetUp tag" unless %headers<FEN>:exists;
+            self.load(%headers<FEN>, :preserveHeaders);
+        }
+    }
+
+    # Comment encoding/decoding helper functions
+    sub toHex($s) {
+        $s.comb.map({ .ord < 128 ?? .ord.fmt('%02x') !! .encode('utf-8').map(*.fmt('%02x')).join }).join
+    }
+
+    sub fromHex($s) {
+        return '' unless $s.chars;
+        my $encoded = '%' ~ $s.comb(/.. | . /).join('%');
+        URI::Encode::uri_decode($encoded); # Use URI::Encode inside the method
+    }
+
+    sub encodeComment($s) {
+        my $cleaned = $s.subst(/\n/, ' ', :g); # Replace logical \n with spaces
+        '{' ~ toHex($cleaned.substr(1, *-1)) ~ '}';
+    }
+
+    sub decodeComment($s) {
+        return fromHex($s.substr(1, *-1)) if $s.starts-with('{') && $s.ends-with('}');
+    }
+
+    # Process moves, mimicking chess.js
+    #
+    my $ms = $pgn.substr($headerString.chars);
+
+    $ms .= subst(
+        rx/ (\{ <-[}]>* \}) | (\; <-[\n]>* ) /, # Capture comments, exclude logical \n
+        -> $m { $m[0] ?? encodeComment($m[0]) !! ' ' ~ encodeComment('{' ~ $m[1].substr(1) ~ '}') },
+        :g
+    );
+    $ms .= subst(/\n/, ' ', :g); # Normalize logical \n to spaces
+    
+
+    my $ravRegex = rx/ '(' ~ ')' <-[()]>+ /;
+    while $ms ~~ $ravRegex {
+        $ms .= subst($ravRegex, '');
+    }
+
+    $ms .= subst(/\d+ '.' '..'?/, '', :g);
+    $ms .= subst(/'... '/, '', :g);
+    $ms .= subst(/'\$' \d+/, '', :g);
+    my @moves = $ms.trim.words;
+
+    my $result = '';
+    for @moves -> $move {
+        my $comment = decodeComment($move);
+        if $comment.defined {
+            %!comments{self.fen} = $comment;
+            next;
+        }
+        try my %move-obj = self!moveFromSan($move, $strict);
+        if $! {
+            if $move eq any(@TERMINATION_MARKERS) {
+                $result = $move;
+            } else {
+                fail "Invalid move in PGN: $move" if $strict;
+                last;
+            }
+        } else {
+            $result = '';
+            self!makeMove(%move-obj);
+	    note %move-obj.raku unless %move-obj<color>;
+            self!incPositionCount(self.fen);
+        }
+    }
+
+    self.header('Result', $result) if $result && %!header && !%!header<Result>;
+    True;
 }
+
 #`[[[
 /*
  * Convert a move from 0x88 coordinates to Standard Algebraic Notation
@@ -1182,7 +1269,7 @@ method !moveFromSan($move, $strict = False) {
     }
   }
   if $strict {
-    return Nil
+    fail "can't parse $move in strict mode";
   }
   my Match $matches;
   my Str (
@@ -1227,11 +1314,11 @@ method !moveFromSan($move, $strict = False) {
 	if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)).subst(/x/, '') {
 	  return @moves[$i];
 	}
-      } elsif (!$piece || $piece.lc eq @moves[$i]<piece>) && %Ox88{$from} == @moves[$i].from && %Ox88{$to} == @moves[$i].to && (!$promotion || $promotion.lc eq @moves[$i].promotion) {
+      } elsif (!$piece || $piece.lc eq @moves[$i]<piece>) && %Ox88{$from} == @moves[$i]<from> && %Ox88{$to} == @moves[$i]<to> && (!$promotion || $promotion.lc eq @moves[$i]<promotion>) {
 	return @moves[$i];
       } elsif $overlyDisambiguated {
 	my \square = algebraic(@moves[$i]<from>);
-	if (!$piece || $piece.lc == @moves[i]<piece>) && %Ox88{$to} == @moves[i].to && ($from == square[0] || $from == square[1]) && (!$promotion || $promotion.lc == @moves[i].promotion) {
+	if (!$piece || $piece.lc == @moves[$i]<piece>) && %Ox88{$to} == @moves[$i]<to> && ($from == square[0] || $from == square[1]) && (!$promotion || $promotion.lc == @moves[$i]<promotion>) {
 	  return @moves[$i];
 	}
       }
@@ -1264,7 +1351,6 @@ method ascii {
 }
 method perft($depth) {
   my @moves = self!moves({ :!legal });
-  #note "depth=$depth, moves: {@moves.map({ algebraic(.<from>) ~ algebraic(.<to>)})}";
   my $nodes = 0;
   my $color = $!turn;
   loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
