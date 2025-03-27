@@ -54,7 +54,6 @@ constant %FLAGS =
   QSIDE_CASTLE => 'q'
   ;
 
-our constant @SQUARES is export(:squares) = ([1..8] .reverse) X[R~] 'a'..'h';
 constant %BITS =
   NORMAL       => 1,
   CAPTURE      => 2,
@@ -64,7 +63,10 @@ constant %BITS =
   KSIDE_CASTLE => 32,
   QSIDE_CASTLE => 64
   ;
-constant %Ox88 is export(:squares) = (@SQUARES Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
+
+# https://en.wikipedia.org/wiki/0x88
+enum Square is export (([1..8] .reverse X[R~] 'a'..'h') Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
+
 constant %PAWN_OFFSETS = 
   b => [16, 32, 17, 15],
   w => [-16, -32, -17, -15]
@@ -115,12 +117,12 @@ constant %SIDES =
 ;
 constant %ROOKS = 
   w => [
-    { square => %Ox88<a1>, flag => %BITS<QSIDE_CASTLE> },
-    { square => %Ox88<h1>, flag => %BITS<KSIDE_CASTLE> }
+    { square => a1, flag => %BITS<QSIDE_CASTLE> },
+    { square => h1, flag => %BITS<KSIDE_CASTLE> }
   ],
   b => [
-    { square => %Ox88<a8>, flag => %BITS<QSIDE_CASTLE> },
-    { square => %Ox88<h8>, flag => %BITS<KSIDE_CASTLE> }
+    { square => a8, flag => %BITS<QSIDE_CASTLE> },
+    { square => h8, flag => %BITS<KSIDE_CASTLE> }
   ]
 ;
 constant %SECOND_RANK = b => RANK_7, w => RANK_2;
@@ -388,7 +390,7 @@ method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
     when /k/ { %!castling<b> +|= %BITS<KSIDE_CASTLE>; proceed }
     when /q/ { %!castling<b> +|= %BITS<QSIDE_CASTLE>;         }
   }
-  $!epSquare = @tokens[3] eq '-' ?? EMPTY !! %Ox88{@tokens[3]};
+  $!epSquare = @tokens[3] eq '-' ?? EMPTY !! Square::{@tokens[3]};
   $!halfMoves = @tokens[4].Int;
   $!moveNumber = @tokens[5].Int;
   self!updateSetup($fen);
@@ -397,7 +399,7 @@ method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
 method fen {
   my $empty = 0;
   my $fen = '';
-  loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
+  loop (my $i = a8; $i ≤ h1; $i++) {
     if @!board[$i] {
       if $empty > 0 {
 	$fen ~= $empty;
@@ -412,7 +414,7 @@ method fen {
       if $empty > 0 {
 	$fen ~= $empty;
       }
-      if $i !== %Ox88<h1> {
+      if $i !== h1 {
 	$fen ~= '/';
       }
       $empty = 0;
@@ -491,7 +493,7 @@ method reset {
   self.load(DEFAULT-POSITION);
 }
 method get(\square) {
-  @!board[%Ox88{square}];
+  @!board[Square::{square}];
 }
 method put(% (:$type, :$color), \square) {
   if self!put({ :$type, :$color }, square) {
@@ -506,10 +508,10 @@ method !put(% (:$type, :$color), \square) {
   unless SYMBOLS.match($type.lc) {
     return False;
   }
-  unless %Ox88{square}:exists {
+  unless Square::{square}:exists {
     return False;
   }
-  my $sq = %Ox88{square};
+  my $sq = Square::{square};
   if $type eq KING && !(%!kings{$color} == EMPTY|$sq) {
     return False;
   }
@@ -523,9 +525,9 @@ method !put(% (:$type, :$color), \square) {
   }
   return True;
 }
-method remove(\square) {
+method remove(Square \square) {
   my $piece = self.get(square);
-  @!board[%Ox88[square]]:delete;
+  @!board[square]:delete;
   if $piece && $piece<type> eq KING {
     %!kings{$piece<color>} = EMPTY;
   }
@@ -535,18 +537,18 @@ method remove(\square) {
   return $piece
 }
 method !updateCastlingRights {
-  my \whiteKingInPlace = .defined && .<type> eq KING && .<color> eq WHITE given @!board[%Ox88<e1>];
-  my \blackKingInPlace = .defined && .<type> eq KING && .<color> eq BLACK given @!board[%Ox88<e8>];
-  if !whiteKingInPlace || (@!board[%Ox88<a1>]<type> // '') ne ROOK || @!board[%Ox88<a1>]<color> ne WHITE {
+  my \whiteKingInPlace = .defined && .<type> eq KING && .<color> eq WHITE given @!board[e1];
+  my \blackKingInPlace = .defined && .<type> eq KING && .<color> eq BLACK given @!board[e8];
+  if !whiteKingInPlace || (@!board[a1]<type> // '') ne ROOK || @!board[a1]<color> ne WHITE {
     %!castling<w> +&= +^%BITS<QSIDE_CASTLE>;
   }
-  if !whiteKingInPlace || (@!board[%Ox88<h1>]<type> // '') ne ROOK || @!board[%Ox88<h1>]<color> ne WHITE {
+  if !whiteKingInPlace || (@!board[h1]<type> // '') ne ROOK || @!board[h1]<color> ne WHITE {
     %!castling<w> +&= +^%BITS<KSIDE_CASTLE>;
   }
-  if !blackKingInPlace || (@!board[%Ox88<a8>]<type> // '') ne ROOK || @!board[%Ox88<a8>]<color> ne BLACK {
+  if !blackKingInPlace || (@!board[a8]<type> // '') ne ROOK || @!board[a8]<color> ne BLACK {
     %!castling<b> +&= +^%BITS<QSIDE_CASTLE>;
   }
-  if !blackKingInPlace || (@!board[%Ox88<h8>]<type> // '') ne ROOK || @!board[%Ox88<h8>]<color> ne BLACK {
+  if !blackKingInPlace || (@!board[h8]<type> // '') ne ROOK || @!board[h8]<color> ne BLACK {
     %!castling<b> +&= +^%BITS<KSIDE_CASTLE>;
   }
 }
@@ -567,8 +569,9 @@ method !updateEnPassantSquare {
   }
 }
 method !attacked(\color, \square, Bool :$verbose) {
+  return self!attacked(color, Square(square), :$verbose) unless square ~~ Square;
   my @attackers;
-  loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1> ; $i++) {
+  loop (my $i = a8; $i ≤ h1 ; $i++) {
     if $i +& 136 {
       $i += 7;
       next;
@@ -627,19 +630,19 @@ method !attacked(\color, \square, Bool :$verbose) {
     return False;
   }
 }
-method attackers(\square, $attackedBy?) {
+method attackers(Square \square, $attackedBy?) {
   if !$attackedBy {
-    return self!attacked($!turn, %Ox88{square}, :verbose);
+    return self!attacked($!turn, square, :verbose);
   } else {
-    return self!attacked($attackedBy, %Ox88{square}, :verbose);
+    return self!attacked($attackedBy, square, :verbose);
   }
 }
 method !isKingAttacked(\color) {
-  my \square = %!kings{color};
-  square == -1 ?? False !! self!attacked(swapColor(color), square);
+  my $square = %!kings{color};
+  $square == EMPTY ?? False !! self!attacked(swapColor(color), $square);
 }
 method isAttacked(\square, \attackedBy) {
-  self!attacked(attackedBy, %Ox88[square])
+  self!attacked(attackedBy, Square::{square})
 }
 method isCheck {
   self!isKingAttacked($!turn);
@@ -665,7 +668,7 @@ method isInsufficientMaterial {
   my @bishops;
   my UInt $numPieces = 0;
   my $squareColor = 0;
-  loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
+  loop (my $i = a8; $i ≤ h1; $i++) {
     $squareColor = ($squareColor + 1) % 2;
     if $i +& 136 {
       $i += 7;
@@ -725,14 +728,14 @@ method !moves(% (Bool :$legal = True, :$piece, :$square) = {}) {
   my @moves;
   my $us = $!turn;
   my $them = swapColor($us);
-  my $firstSquare = %Ox88<a8>;
-  my $lastSquare = %Ox88<h1>;
+  my $firstSquare = a8;
+  my $lastSquare = h1;
   my $singleSquare = False;
   if forSquare {
-    if %Ox88{forSquare}:!exists {
+    if Square::{forSquare}:!exists {
       return []
     } else {
-      $firstSquare = $lastSquare = %Ox88{forSquare};
+      $firstSquare = $lastSquare = Square::{forSquare};
       $singleSquare = True;
     }
   }
@@ -844,7 +847,7 @@ method move($move, % (:$strict = False) = {}) {
       die "Invalid move: {$move.raku}";
     }
   }
-  my $prettyMove = Move.new(self, %moveObj<>);
+  my $prettyMove = Move.new(self, %moveObj);
   self!makeMove(%moveObj);
   self!incPositionCount($prettyMove.after);
   return $prettyMove;
@@ -1314,11 +1317,11 @@ method !moveFromSan($move, $strict = False) {
 	if cleanMove eq strippedSan(self!moveToSan(@moves[$i], @moves)).subst(/x/, '') {
 	  return @moves[$i];
 	}
-      } elsif (!$piece || $piece.lc eq @moves[$i]<piece>) && %Ox88{$from} == @moves[$i]<from> && %Ox88{$to} == @moves[$i]<to> && (!$promotion || $promotion.lc eq @moves[$i]<promotion>) {
+      } elsif (!$piece || $piece.lc eq @moves[$i]<piece>) && Square::{$from} == @moves[$i]<from> && Square::{$to} == @moves[$i]<to> && (!$promotion || $promotion.lc eq @moves[$i]<promotion>) {
 	return @moves[$i];
       } elsif $overlyDisambiguated {
 	my \square = algebraic(@moves[$i]<from>);
-	if (!$piece || $piece.lc == @moves[$i]<piece>) && %Ox88{$to} == @moves[$i]<to> && ($from == square[0] || $from == square[1]) && (!$promotion || $promotion.lc == @moves[$i]<promotion>) {
+	if (!$piece || $piece.lc == @moves[$i]<piece>) && Square::{$to} == @moves[$i]<to> && ($from == square[0] || $from == square[1]) && (!$promotion || $promotion.lc == @moves[$i]<promotion>) {
 	  return @moves[$i];
 	}
       }
@@ -1328,7 +1331,7 @@ method !moveFromSan($move, $strict = False) {
 }
 method ascii {
   my $s = "   +------------------------+\n";
-  loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
+  loop (my $i = a8; $i ≤ h1; $i++) {
     if file($i) == 0 {
       $s ~= " " ~ [1..8].reverse[rank($i)] ~ " |";
     }
@@ -1370,7 +1373,7 @@ method perft($depth) {
 method board {
   gather {
     my @row;
-    loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
+    loop (my $i = a8; $i ≤ h1; $i++) {
       if !@!board[$i].defined {
 	@row.push(Nil)
       } else {
@@ -1389,8 +1392,8 @@ method board {
   }
 }
 method squareColor($square) {
-  if %Ox88{$square}:exists {
-    my $sq = %Ox88{$square};
+  if Square::{$square}:exists {
+    my $sq = Square::{$square};
     return (rank($sq) + file($sq)) % 2 == 0 ?? 'light' !! 'dark';
   }
 }
