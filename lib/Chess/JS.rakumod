@@ -168,7 +168,7 @@ our sub validateFen($fen) {
     }
     $rank++;
     fail "Invalid FEN: piece data is invalid (too many or too few squares in rank {[1..8][8-$rank]})" unless $sumFields == 8;
-    if @tokens[3] ~~ /3/ && @tokens[1] eq '(WHITE)' || @tokens[3] ~~ /6/ && @tokens[1] eq BLACK {
+    if @tokens[3] ~~ /3/ && @tokens[1] eq WHITE || @tokens[3] ~~ /6/ && @tokens[1] eq BLACK {
       fail "Invalid FEN: illegal en-passant square"
     }
     constant @kings =
