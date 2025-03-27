@@ -30,6 +30,7 @@ trusts Move;
 
 constant WHITE  is export(:colors) = 'w';
 constant BLACK  is export(:colors) = 'b';
+
 constant PAWN   is export(:pieces) = 'p';
 constant KNIGHT is export(:pieces) = 'n';
 constant BISHOP is export(:pieces) = 'b';
@@ -37,18 +38,18 @@ constant ROOK   is export(:pieces) = 'r';
 constant QUEEN  is export(:pieces) = 'q';
 constant KING   is export(:pieces) = 'k';
 
-constant DEFAULT_POSITION = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1};
+constant DEFAULT-POSITION = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1};
 
 # emulate javascript's void 0??
 constant void0 = 0 but role { method defined { False } }
 
 constant EMPTY = -1;
 constant %FLAGS = 
-  NORMAL => 'n',
-  CAPTURE => 'c',
-  BIG_PAWN => 'b',
-  EP_CAPTURE => 'e',
-  PROMOTION  => 'p',
+  NORMAL       => 'n',
+  CAPTURE      => 'c',
+  BIG_PAWN     => 'b',
+  EP_CAPTURE   => 'e',
+  PROMOTION    => 'p',
   KSIDE_CASTLE => 'k',
   QSIDE_CASTLE => 'q'
   ;
@@ -75,7 +76,8 @@ constant %PIECE_OFFSETS =
   q => [-17, -16, -15, 1, 17, 16, 15, -1],
   k => [-17, -16, -15, 1, 17, 16, 15, -1]
 ;
-constant @ATTACKS = 20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0,
+constant $ATTACKS = blob8.new:
+	20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0,
 	0, 0, 0, 24, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 20, 0, 0, 0, 0, 24, 0, 0,
 	0, 0, 20, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 0,
 	0, 0, 0, 0, 20, 0, 0, 24, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20,
@@ -87,7 +89,8 @@ constant @ATTACKS = 20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20, 0, 0, 20, 0,
 	20, 0, 0, 0, 0, 24, 0, 0, 0, 0, 20, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 24,
 	0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20
 ;
-constant @RAYS = 17, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 15, 0, 0, 17, 0, 0, 0,
+constant $RAYS = Blob[int8].new:
+	17, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 15, 0, 0, 17, 0, 0, 0,
 	0, 0, 16, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 17, 0, 0, 0, 0, 16, 0, 0, 0,
 	0, 15, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 0, 0,
 	0, 0, 0, 17, 0, 0, 16, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0,
@@ -283,15 +286,15 @@ class Move {
     $.after
   );
 
-  method new($chess, %internal, :$debug = False) {
-    self.bless: :$chess, :%internal, :$debug
+  method new($chess, %internal) {
+    self.bless: :$chess, :%internal
   }
-  submethod BUILD(:$chess, :%internal (:$!color, :$!piece, :$from, :$to, :$flags, :$!captured, :$!promotion), :$debug) {
+  submethod BUILD(:$chess, :%internal (:$!color, :$!piece, :$from, :$to, :$flags, :$!captured, :$!promotion)) {
     my $fromAlgebraic = algebraic($from);
     my $toAlgebraic   = algebraic($to);
     $!from = $fromAlgebraic;
     $!to   = $toAlgebraic;
-    my @moves = $chess!Chess::JS::moves: { :legal }, :$debug;
+    my @moves = $chess!Chess::JS::moves: { :legal };
     $!san = $chess!Chess::JS::moveToSan(%internal, @moves);
     $!lan  = $fromAlgebraic ~ $toAlgebraic;
     $!before = $chess.fen();
@@ -329,7 +332,7 @@ has %!castling = w => 0, b => 0;
 # tracks number of times a position has been seen for repetition checking
 has %!positionCount;
 
-method new($fen = DEFAULT_POSITION, % (:$skipValidation = False) = {}) {
+method new($fen = DEFAULT-POSITION, % (:$skipValidation = False) = {}) {
   self.bless(:$fen, :$skipValidation);
 }
 submethod TWEAK(:$fen, :$skipValidation) {
@@ -373,8 +376,8 @@ method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
     } elsif isDigit(piece) {
       $square += piece;
     } else {
-      my \color = piece lt 'a' ?? WHITE !! BLACK;
-      self.put: { type => piece.lc, :color(color) }, algebraic($square);
+      my $color = piece lt 'a' ?? WHITE !! BLACK;
+      self.put: { type => piece.lc, :$color }, algebraic($square);
       $square++;
     }
   }
@@ -476,7 +479,7 @@ method fen {
 ]]]
 method !updateSetup($fen) {
   if @!history.elems > 0 { return }
-  if $fen ne DEFAULT_POSITION {
+  if $fen ne DEFAULT-POSITION {
     %!header<SetUp> = "1";
     %!header<FEN>   = $fen;
   } else {
@@ -485,7 +488,7 @@ method !updateSetup($fen) {
   }
 }
 method reset { 
-  self.load(DEFAULT_POSITION);
+  self.load(DEFAULT-POSITION);
 }
 method get(\square) {
   @!board[%Ox88{square}];
@@ -579,7 +582,7 @@ method !attacked(\color, \square, Bool :$verbose) {
       next;
     }
     my \index = difference + 119;
-    if @ATTACKS[index] +& %PIECE_MASKS{$piece<type>} {
+    if $ATTACKS[index] +& %PIECE_MASKS{$piece<type>} {
       if $piece<type> eq PAWN {
 	if difference > 0 && $piece<color> eq WHITE || difference ≤ 0 && $piece<color> eq BLACK {
 	  if !$verbose {
@@ -598,7 +601,7 @@ method !attacked(\color, \square, Bool :$verbose) {
 	  next;
 	}
       }
-      my \offset = @RAYS[index];
+      my \offset = $RAYS[index];
       my $j = $i + offset;
       my $blocked = False;
       while $j !== square {
@@ -651,16 +654,16 @@ method isStalemate {
   !self.isCheck && self!moves().elems == 0
 }
 method isInsufficientMaterial {
-  my \pieces = {
+  my %pieces = 
     b => 0,
     n => 0,
     r => 0,
     q => 0,
     k => 0,
     p => 0
-  };
-  my \bishops = [];
-  my $numPieces = 0;
+  ;
+  my @bishops;
+  my UInt $numPieces = 0;
   my $squareColor = 0;
   loop (my $i = %Ox88<a8>; $i ≤ %Ox88<h1>; $i++) {
     $squareColor = ($squareColor + 1) % 2;
@@ -670,9 +673,9 @@ method isInsufficientMaterial {
     }
     my $piece = @!board[$i];
     if $piece {
-      pieces{$piece<type>} = pieces{$piece<type>}:exists ?? pieces{$piece<type>} + 1 !! 1;
+      %pieces{$piece<type>} = %pieces{$piece<type>}:exists ?? %pieces{$piece<type>} + 1 !! 1;
       if $piece<type> eq BISHOP {
-	bishops.push($squareColor);
+	@bishops.push($squareColor);
       }
       $numPieces++;
     }
@@ -681,14 +684,14 @@ method isInsufficientMaterial {
     return True;
   } elsif 
   # k vs. kn .... or .... k vs. kb
-  $numPieces === 3 && (pieces{BISHOP} == 1 || pieces{KNIGHT} == 1)
+  $numPieces == 3 && (%pieces{BISHOP} == 1 || %pieces{KNIGHT} == 1)
   {
     return True;
-  } elsif $numPieces == pieces{BISHOP} + 2 {
+  } elsif $numPieces == %pieces{BISHOP} + 2 {
     my $sum = 0;
-    my \len = bishops.elems;
+    my \len = @bishops.elems;
     loop (my $i = 0; $i < len; $i++) {
-      $sum += bishops[$i]
+      $sum += @bishops[$i]
     }
     if $sum == 0|len {
       return True
@@ -708,18 +711,18 @@ method isDraw {
 method isGameOver {
   self.isCheckmate || self.isStalemate || self.isDraw
 }
-method moves(% (:$verbose = False, :$square = void0, :$piece = void0) = {}) {
-  my \moves = self!moves({ :$square, :$piece });
+method moves(% (Bool :$verbose, :$square, :$piece) = {}) {
+  my @moves = self!moves({ :$square, :$piece });
   if $verbose {
-    return moves.map( -> \move { Move.new(self, move) } );
+    return @moves.map( -> \move { Move.new(self, move) } );
   } else {
-    return moves.map( -> \move { self!moveToSan(move, moves) } )
+    return @moves.map( -> \move { self!moveToSan(move, @moves) } )
   }
 }
-method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}, :$debug = False) {
-  my \forSquare = $square.defined ?? $square.toLowerCase !! void0;
-  my \forPiece = $piece.defined ?? $piece.lc !! $piece<>;
-  my \moves = [];
+method !moves(% (Bool :$legal = True, :$piece, :$square) = {}) {
+  my \forSquare = $square ?? $square.toLowerCase !! void0;
+  my \forPiece = $piece ?? $piece.lc !! $piece<>;
+  my @moves;
   my $us = $!turn;
   my $them = swapColor($us);
   my $firstSquare = %Ox88<a8>;
@@ -748,10 +751,10 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}, :$debu
 	
       $to = $from + %PAWN_OFFSETS{$us}[0];
       if !@!board[$to] {
-	addMove(moves, $us, $from, $to, PAWN);
+	addMove(@moves, $us, $from, $to, PAWN);
 	$to = $from + %PAWN_OFFSETS{$us}[1];
 	if %SECOND_RANK{$us} == rank($from) && !@!board[$to] {
-	  addMove(moves, $us, $from, $to, PAWN, void0, %BITS<BIG_PAWN>);
+	  addMove(@moves, $us, $from, $to, PAWN, void0, %BITS<BIG_PAWN>);
 	}
       }
       loop (my $j = 2; $j < 4; $j++) {
@@ -759,9 +762,9 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}, :$debu
 	next if $to +& 136;
 
 	if (@!board[$to]<color> // '') eq $them {
-	  addMove(moves, $us, $from, $to, PAWN, @!board[$to]<type>, %BITS<CAPTURE>);
+	  addMove(@moves, $us, $from, $to, PAWN, @!board[$to]<type>, %BITS<CAPTURE>);
 	} elsif $to == $!epSquare {
-	  addMove(moves, $us, $from, $to, PAWN, PAWN, %BITS<EP_CAPTURE>);
+	  addMove(@moves, $us, $from, $to, PAWN, PAWN, %BITS<EP_CAPTURE>);
 	}
       }
     } else {
@@ -775,11 +778,11 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}, :$debu
 	  last if $to +& 136;
 
 	  if !@!board[$to] {
-	    addMove(moves, $us, $from, $to, type);
+	    addMove(@moves, $us, $from, $to, type);
 	  } else {
 	    last if @!board[$to]<color> eq $us;
 
-	    addMove(moves, $us, $from, $to, type, @!board[$to]<type>, %BITS<CAPTURE>);
+	    addMove(@moves, $us, $from, $to, type, @!board[$to]<type>, %BITS<CAPTURE>);
 	    last;
 	  }
 	  if type eq KNIGHT|KING {
@@ -799,40 +802,37 @@ method !moves(% (:$legal = True, :$piece = void0, :$square = void0) = {}, :$debu
 	  !self!attacked($them, %!kings{$us}) &&
 	  !self!attacked($them, castlingFrom + 1)
 	  && !self!attacked($them, castlingTo) {
-	  addMove(moves, $us, %!kings{$us}, castlingTo, KING, void0, %BITS<KSIDE_CASTLE>);
+	  addMove(@moves, $us, %!kings{$us}, castlingTo, KING, void0, %BITS<KSIDE_CASTLE>);
 	}
       }
       if %!castling{$us} +& %BITS<QSIDE_CASTLE> {
 	my \castlingFrom = %!kings{$us};
 	my \castlingTo = castlingFrom - 2;
 	if !@!board[castlingFrom - 1] && !@!board[castlingFrom - 2] && !@!board[castlingFrom - 3] && !self!attacked($them, %!kings{$us}) && !self!attacked($them, castlingFrom - 1) && !self!attacked($them, castlingTo) {
-	  addMove(moves, $us, %!kings{$us}, castlingTo, KING, void0, %BITS<QSIDE_CASTLE>);
+	  addMove(@moves, $us, %!kings{$us}, castlingTo, KING, void0, %BITS<QSIDE_CASTLE>);
 	}
       }
     }
   }
   if !$legal || %!kings{$us} == -1 {
-    return moves;
-  }
-  my \legalMoves = [];
-  loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
-    self!makeMove(moves[$i]);
-    if !self!isKingAttacked($us) {
-      legalMoves.push(moves[$i]);
+    return @moves;
+  } else {
+    return gather for @moves -> $move {
+      self!makeMove($move);
+      take $move unless self!isKingAttacked($us);
+      self!undoMove;
     }
-    self!undoMove();
   }
-  return legalMoves
 }
 method move($move, % (:$strict = False) = {}) {
   my %moveObj;
   if $move ~~ Str {
     %moveObj := self!moveFromSan($move, $strict);
   } elsif $move ~~ Hash {
-    my \moves = self!moves();
-    loop (my ($i, \len) = 0, moves.elems; $i < len; $i++) {
-      if $move<from> eq algebraic(moves[$i]<from>) && $move<to> eq algebraic(moves[$i]<to>) && (!moves[$i]<promotion>:exists || $move<promotion> eq moves[$i]<promotion>) {
-	%moveObj := moves[$i];
+    my @moves = self!moves();
+    loop (my ($i, \len) = 0, @moves.elems; $i < len; $i++) {
+      if $move<from> eq algebraic(@moves[$i]<from>) && $move<to> eq algebraic(@moves[$i]<to>) && (!@moves[$i]<promotion>:exists || $move<promotion> eq @moves[$i]<promotion>) {
+	%moveObj := @moves[$i];
 	last;
       }
     }
