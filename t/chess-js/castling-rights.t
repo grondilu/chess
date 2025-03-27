@@ -1,7 +1,7 @@
 use Test;
 use lib <lib>;
 use Chess::JS;
-use Chess::JS :colors, :pieces;
+use Chess::JS :pieces;
 
 subtest {
     my Chess::JS $chess .= new;

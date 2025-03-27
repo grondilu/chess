@@ -28,8 +28,7 @@ POSSIBILITY OF SUCH DAMAGE.
 class Move {...}
 trusts Move;
 
-constant WHITE  is export(:colors) = 'w';
-constant BLACK  is export(:colors) = 'b';
+enum Color is export <WHITE BLACK>;
 
 constant PAWN   is export(:pieces) = 'p';
 constant KNIGHT is export(:pieces) = 'n';
@@ -65,8 +64,11 @@ constant %BITS =
   ;
 
 # https://en.wikipedia.org/wiki/0x88
-our constant @SQUARES is export(:squares) = ([1..8] .reverse) X[R~] 'a'..'h';
-constant %Ox88 is export(:squares) = (@SQUARES Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
+our constant @SQUARES = ([1..8] .reverse) X[R~] 'a'..'h';
+our constant %Ox88 = (@SQUARES Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
+
+subset Square          of UInt   where BEGIN %Ox88{@SQUARES}.any;
+subset EnPassantSquare of Square where BEGIN %Ox88{@SQUARES.grep: /<[36]>$/}.any;
 
 constant %PAWN_OFFSETS = 
   (BLACK) => [16, 32, 17, 15],
@@ -145,7 +147,7 @@ our sub validateFen($fen) {
   fail "Invalid FEN: could not parse number of half moves" if $!;
   fail "Invalid FEN: en-passant square is invalid" unless @tokens[3] ~~ /^[\-|<[a..h]><[36]>]$/;
   fail "Invalid FEN: castling availability is invalid" if @tokens[2] ~~ /<-[KQkq-]>/;
-  fail "Invalid FEN: side-to-move is invalid" unless @tokens[1] eq WHITE|BLACK;
+  fail "Invalid FEN: side-to-move is invalid" unless @tokens[1] eq 'w'|'b';
   my @rows = @tokens[0].split('/');
   fail "Invalid FEN: piece data does not contain 8 '/'-delimited rows" unless @rows == 8;
   for @rows -> $row {
@@ -325,7 +327,7 @@ class Move {
 has @!board[128];
 has $!turn = WHITE;
 has %!header;
-has %!kings = (WHITE) => EMPTY, (BLACK) => EMPTY;
+has Square %!kings{Color};
 has $!epSquare = -1;
 has $!halfMoves = 0;
 has $!moveNumber = 0;
@@ -344,7 +346,7 @@ submethod TWEAK(:$fen, :$skipValidation) {
 
 method clear( % (:$preserveHeaders = False) = {}) {
   @!board = Array.new: :shape(128);
-  %!kings = (WHITE) => EMPTY, (BLACK) => EMPTY;
+  %!kings{$_}:delete for %!kings.keys;
   $!turn = WHITE;
   %!castling = (WHITE) => 0, (BLACK) => 0;
   $!epSquare = EMPTY;
@@ -384,12 +386,12 @@ method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
       $square++;
     }
   }
-  $!turn = @tokens[1];
+  $!turn = %(w => WHITE, b => BLACK){@tokens[1]};
   given @tokens[2] {
     when /K/ { %!castling{WHITE} +|= %BITS<KSIDE_CASTLE>; proceed }
     when /Q/ { %!castling{WHITE} +|= %BITS<QSIDE_CASTLE>; proceed }
-    when /k/ { %!castling<b> +|= %BITS<KSIDE_CASTLE>; proceed }
-    when /q/ { %!castling<b> +|= %BITS<QSIDE_CASTLE>;         }
+    when /k/ { %!castling{BLACK} +|= %BITS<KSIDE_CASTLE>; proceed }
+    when /q/ { %!castling{BLACK} +|= %BITS<QSIDE_CASTLE>;         }
   }
   $!epSquare = @tokens[3] eq '-' ?? EMPTY !! %Ox88{@tokens[3]};
   $!halfMoves = @tokens[4].Int;
@@ -422,6 +424,7 @@ method fen {
       $i += 8;
     }
   }
+  my $turn = %( (WHITE) => 'w', (BLACK) => 'b' ){$!turn};
   my $castling = '';
   if %!castling{WHITE} +& %BITS<KSIDE_CASTLE> {
     $castling ~= 'K'
@@ -465,7 +468,7 @@ method fen {
   }
   return [
     $fen,
-    $!turn,
+    $turn,
     $castling,
     $epSquare,
     $!halfMoves,
@@ -513,12 +516,12 @@ method !put(% (:$type, :$color), \square) {
     return False;
   }
   my $sq = %Ox88{square};
-  if $type eq KING && !(%!kings{$color} == EMPTY|$sq) {
+  if $type eq KING && !(%!kings{$color}:!exists || %!kings{$color} == $sq) {
     return False;
   }
   my \currentPieceOnSquare = @!board[$sq];
   if currentPieceOnSquare && currentPieceOnSquare<type> eq KING {
-    %!kings{currentPieceOnSquare<color>} = EMPTY;
+    %!kings{currentPieceOnSquare<color>}:delete;
   }
   @!board[$sq] = { :$type, :$color };
   if $type eq KING {
@@ -530,7 +533,7 @@ method remove(\square) {
   my $piece = self.get(square);
   @!board[square]:delete;
   if $piece && $piece<type> eq KING {
-    %!kings{$piece<color>} = EMPTY;
+    %!kings{$piece<color>}:delete;
   }
   self!updateCastlingRights();
   self!updateEnPassantSquare();
@@ -547,10 +550,10 @@ method !updateCastlingRights {
     %!castling{WHITE} +&= +^%BITS<KSIDE_CASTLE>;
   }
   if !blackKingInPlace || (@!board[%Ox88<a8>]<type> // '') ne ROOK || @!board[%Ox88<a8>]<color> ne BLACK {
-    %!castling<b> +&= +^%BITS<QSIDE_CASTLE>;
+    %!castling{BLACK} +&= +^%BITS<QSIDE_CASTLE>;
   }
   if !blackKingInPlace || (@!board[%Ox88<h8>]<type> // '') ne ROOK || @!board[%Ox88<h8>]<color> ne BLACK {
-    %!castling<b> +&= +^%BITS<KSIDE_CASTLE>;
+    %!castling{BLACK} +&= +^%BITS<KSIDE_CASTLE>;
   }
 }
 method !updateEnPassantSquare {
@@ -580,7 +583,7 @@ method !attacked(\color, \square, Bool :$verbose) {
       next;
     }
     my $piece = @!board[$i];
-    die square unless square ~~ UInt;
+    die "square `{square}` is not valid" unless square ~~ Square;
     my \difference = $i - square;
     if difference == 0 {
       next;
@@ -631,19 +634,18 @@ method !attacked(\color, \square, Bool :$verbose) {
     return False;
   }
 }
-method attackers(\square, $attackedBy?) {
-  if !$attackedBy {
-    return self!attacked($!turn, %Ox88{square}, :verbose);
+method attackers($square, $attackedBy?) {
+  if !$attackedBy.defined {
+    return self!attacked($!turn, %Ox88{$square}, :verbose);
   } else {
-    return self!attacked($attackedBy, %Ox88{square}, :verbose);
+    return self!attacked($attackedBy, %Ox88{$square}, :verbose);
   }
 }
-method !isKingAttacked(\color) {
-  my $square = %!kings{color};
-  $square == EMPTY ?? False !! self!attacked(swapColor(color), $square);
+method !isKingAttacked($color) returns Bool {
+  %!kings{$color}:!exists ?? False !! self!attacked(swapColor($color), %!kings{$color});
 }
-method isAttacked(\square, \attackedBy) {
-  self!attacked(attackedBy, %Ox88{square})
+method isAttacked($square, \attackedBy) returns Bool {
+  self!attacked(attackedBy, %Ox88{$square})
 }
 method isCheck {
   self!isKingAttacked($!turn);
@@ -818,7 +820,7 @@ method !moves(% (Bool :$legal = True, :$piece, :$square) = {}) {
       }
     }
   }
-  if !$legal || %!kings{$us} == -1 {
+  if !$legal || (%!kings{$us}:!exists) {
     return @moves;
   } else {
     return gather for @moves -> $move {
@@ -947,7 +949,8 @@ method !undoMove {
     return Nil
   }
   my \move = old<move>;
-  %!kings := old<kings>;
+  %!kings{$_}:delete for %!kings.keys;
+  %!kings = old<kings><>;
   $!turn  = old<turn>;
   %!castling := old<castling>;
   $!epSquare = old<epSquare>;

@@ -1,7 +1,6 @@
 use Test;
 use lib <lib>;
 use Chess::JS;
-use Chess::JS :colors, :squares;
 
 sub getAttackerCount(Chess::JS $chess, $color) {
     ^64 .map: -> $i { $chess.attackers(@Chess::JS::SQUARES[$i], $color).elems }
