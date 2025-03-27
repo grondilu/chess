@@ -68,8 +68,8 @@ constant %BITS =
 enum Square is export (([1..8] .reverse X[R~] 'a'..'h') Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
 
 constant %PAWN_OFFSETS = 
-  b => [16, 32, 17, 15],
-  w => [-16, -32, -17, -15]
+  (BLACK) => [16, 32, 17, 15],
+  (WHITE) => [-16, -32, -17, -15]
   ;
 constant %PIECE_OFFSETS = 
   n => [-18, -33, -31, -14, 18, 33, 31, 14],
@@ -116,16 +116,16 @@ constant %SIDES =
   (QUEEN) => %BITS<QSIDE_CASTLE>
 ;
 constant %ROOKS = 
-  w => [
+  (WHITE) => [
     { square => a1, flag => %BITS<QSIDE_CASTLE> },
     { square => h1, flag => %BITS<KSIDE_CASTLE> }
   ],
-  b => [
+  (BLACK) => [
     { square => a8, flag => %BITS<QSIDE_CASTLE> },
     { square => h8, flag => %BITS<KSIDE_CASTLE> }
   ]
 ;
-constant %SECOND_RANK = b => RANK_7, w => RANK_2;
+constant %SECOND_RANK = (BLACK) => RANK_7, (WHITE) => RANK_2;
 constant @TERMINATION_MARKERS = <1-0 0-1 1/2-1/2 *>;
 
 sub rank($square) { $square +> 4 }
@@ -144,7 +144,7 @@ our sub validateFen($fen) {
   fail "Invalid FEN: could not parse number of half moves" if $!;
   fail "Invalid FEN: en-passant square is invalid" unless @tokens[3] ~~ /^[\-|<[a..h]><[36]>]$/;
   fail "Invalid FEN: castling availability is invalid" if @tokens[2] ~~ /<-[KQkq-]>/;
-  fail "Invalid FEN: side-to-move is invalid" unless @tokens[1] eq 'w'|'b';
+  fail "Invalid FEN: side-to-move is invalid" unless @tokens[1] eq WHITE|BLACK;
   my @rows = @tokens[0].split('/');
   fail "Invalid FEN: piece data does not contain 8 '/'-delimited rows" unless @rows == 8;
   for @rows -> $row {
@@ -168,7 +168,7 @@ our sub validateFen($fen) {
     }
     $rank++;
     fail "Invalid FEN: piece data is invalid (too many or too few squares in rank {[1..8][8-$rank]})" unless $sumFields == 8;
-    if @tokens[3] ~~ /3/ && @tokens[1] eq 'w' || @tokens[3] ~~ /6/ && @tokens[1] eq 'b' {
+    if @tokens[3] ~~ /3/ && @tokens[1] eq '(WHITE)' || @tokens[3] ~~ /6/ && @tokens[1] eq BLACK {
       fail "Invalid FEN: illegal en-passant square"
     }
     constant @kings =
@@ -324,13 +324,13 @@ class Move {
 has @!board[128];
 has $!turn = WHITE;
 has %!header;
-has %!kings = w => EMPTY, b => EMPTY;
+has %!kings = (WHITE) => EMPTY, (BLACK) => EMPTY;
 has $!epSquare = -1;
 has $!halfMoves = 0;
 has $!moveNumber = 0;
 has @!history;
 has %!comments;
-has %!castling = w => 0, b => 0;
+has %!castling = (WHITE) => 0, (BLACK) => 0;
 # tracks number of times a position has been seen for repetition checking
 has %!positionCount;
 
@@ -343,9 +343,9 @@ submethod TWEAK(:$fen, :$skipValidation) {
 
 method clear( % (:$preserveHeaders = False) = {}) {
   @!board = Array.new: :shape(128);
-  %!kings = w => EMPTY, b => EMPTY;
+  %!kings = (WHITE) => EMPTY, (BLACK) => EMPTY;
   $!turn = WHITE;
-  %!castling = w => 0, b => 0;
+  %!castling = (WHITE) => 0, (BLACK) => 0;
   $!epSquare = EMPTY;
   $!halfMoves = 0;
   $!moveNumber = 1;
@@ -385,8 +385,8 @@ method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
   }
   $!turn = @tokens[1];
   given @tokens[2] {
-    when /K/ { %!castling<w> +|= %BITS<KSIDE_CASTLE>; proceed }
-    when /Q/ { %!castling<w> +|= %BITS<QSIDE_CASTLE>; proceed }
+    when /K/ { %!castling{WHITE} +|= %BITS<KSIDE_CASTLE>; proceed }
+    when /Q/ { %!castling{WHITE} +|= %BITS<QSIDE_CASTLE>; proceed }
     when /k/ { %!castling<b> +|= %BITS<KSIDE_CASTLE>; proceed }
     when /q/ { %!castling<b> +|= %BITS<QSIDE_CASTLE>;         }
   }
@@ -540,10 +540,10 @@ method !updateCastlingRights {
   my \whiteKingInPlace = .defined && .<type> eq KING && .<color> eq WHITE given @!board[e1];
   my \blackKingInPlace = .defined && .<type> eq KING && .<color> eq BLACK given @!board[e8];
   if !whiteKingInPlace || (@!board[a1]<type> // '') ne ROOK || @!board[a1]<color> ne WHITE {
-    %!castling<w> +&= +^%BITS<QSIDE_CASTLE>;
+    %!castling{WHITE} +&= +^%BITS<QSIDE_CASTLE>;
   }
   if !whiteKingInPlace || (@!board[h1]<type> // '') ne ROOK || @!board[h1]<color> ne WHITE {
-    %!castling<w> +&= +^%BITS<KSIDE_CASTLE>;
+    %!castling{WHITE} +&= +^%BITS<KSIDE_CASTLE>;
   }
   if !blackKingInPlace || (@!board[a8]<type> // '') ne ROOK || @!board[a8]<color> ne BLACK {
     %!castling<b> +&= +^%BITS<QSIDE_CASTLE>;
@@ -1017,10 +1017,10 @@ method pgn(% (:$newline = "\n", :$maxWidth = 0) = {}) {
     if !$move {
       last;
     }
-    if !@!history.elems && $move<color> eq 'b' {
+    if !@!history.elems && $move<color> eq BLACK {
       my $prefix = "$!moveNumber...";
       $moveString = $moveString eq '' ?? "$moveString $prefix" !! $prefix;
-    } elsif $move<color> eq 'w' {
+    } elsif $move<color> eq WHITE {
       if $moveString.chars {
 	moves.push: $moveString;
       }
