@@ -27,7 +27,25 @@ use Chess;
 show startpos;
 ```
 
-![Hopefully the code above should produce a nice representation of the starting position](https://i.imgur.com/1Ikce1q.png)
+On most terminals, the code above would produce an ascii diagram :
+
+```
+   +------------------------+
+ 8 | r  n  b  q  k  b  n  r |
+ 7 | p  p  p  p  p  p  p  p |
+ 6 | .  .  .  .  .  .  .  . |
+ 5 | .  .  .  .  .  .  .  . |
+ 4 | .  .  .  .  .  .  .  . |
+ 3 | .  .  .  .  .  .  .  . |
+ 2 | P  P  P  P  P  P  P  P |
+ 1 | R  N  B  Q  K  B  N  R |
+   +------------------------+
+     a  b  c  d  e  f  g  h
+ ```
+
+On kitty, it will show a nice picture inside the terminal:
+
+![Hopefully the code above should produce a nice representation of the starting position](https://i.imgur.com/6CIyr3G.png)
 
 This requires :
 
@@ -45,3 +63,4 @@ This requires :
  - [ ] opening and tactics trainer
  - [ ] game database management
  - [ ] translate [Chess.js](https://github.com/jhlywa/chess.js/tree/master)
+ - [ ] read and write [Polyglot books](https://www.chessprogramming.org/PolyGlot)
