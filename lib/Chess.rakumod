@@ -193,6 +193,7 @@ class Position {
 	my @squares = $square ?? ($square,) !! square::{*};
 	my $before = self;
 
+	#(state %){self.uint.base(36)} //=
 	my Move @ = gather {
 	    for @squares -> $from {
 
@@ -274,8 +275,7 @@ class Position {
 		}
 	    }
 	}.grep:
-	    !$legal || (%!kings{$us}:!exists) ?? * !!
-	    { ! .after!isKingAttacked($us) }
+	    !$legal || (%!kings{$us}:!exists) ?? * !! { ! .after!isKingAttacked($us) }
     }
 
     method !attacked(color $color, square $square, Bool :$verbose) {
@@ -900,7 +900,7 @@ sub show(Position $pos) is export {
 		for @rank {
 		    if .defined {
 			my ($R, $C) = ($r, $c).map: { $Chess::Graphics::square-size * ($flip-board ?? 7 - $_ !! $_) }
-			take "composite -geometry +$C+$R <(basenc --base64 -d <<<{%Chess::Graphics::pieces{.value}}) - png:-";
+			take "composite -geometry +$C+$R <(basenc --base64 -d <<<{%Chess::Graphics::pieces{.value.symbol}}) - png:-";
 		    }
 		    $c++;
 		}

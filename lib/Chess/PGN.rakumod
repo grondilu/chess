@@ -12,15 +12,10 @@ token tag { <.alpha>+ }
 rule string { '"' ~ '"' <+graph+space+[+\-`]-[\"]>*? }
 
 rule move {
-  <(<move-number> <half-move> <half-move>?)>
+  <(<move-number> <half-move> ** 1..2)>
 }
 rule half-move {
-    [
-	|| <castle>
-	|| <promotion>
-	|| <piece-moves>
-	|| <pawn-moves>
-    ]< + ++ # >?<annotation>?
+    <pseudo-half-move>< + ++ # >?<annotation>?
     <nag>? <comment>?
 }
 token annotation { < ?? ? !? ?! ! !! > }
@@ -30,10 +25,11 @@ rule comment {
     | '(' ~ ')' <move>+
 }
 
-token pawn-moves { [<file>x]?<square> }
-token piece-moves { <piece><disambiguation>??x?<square> }
+token pseudo-half-move { <+castle+promotion+piece-move+pawn-move> }
+token pawn-move { [<file>x]?<square> }
+token piece-move { <piece><disambiguation>??x?<square> }
 token castle     { [ 'O-O' '-O'? | 'o-o' '-o'? ] }
-token promotion  { <pawn-moves>'='<piece> }
+token promotion  { <pawn-move>'='<piece> }
 
 token disambiguation { <file> | <rank> | <file><rank> }
 
