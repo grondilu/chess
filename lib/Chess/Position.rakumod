@@ -1,9 +1,33 @@
 unit class Chess::Position;
+# translated from https://github.com/jhlywa/chess.js.git
+#`{{{ ORIGINAL LICENSE
+Copyright (c) 2025, Jeff Hlywa (jhlywa@gmail.com)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+}}}
 use Chess::FEN;
 class Move {...}
 trusts Move;
-
-constant startpos is export = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1};
 
 enum color is export <white black>;
 sub prefix:<¬>(color $color --> color) { $color ~~ white ?? black !! white }
@@ -36,6 +60,7 @@ role Piece[Str $symbol, UInt $mask] {
     }
     method offsets {...}
     method symbol { ($!color ~~ white ?? *.uc !! *.lc)($symbol) }
+    method gist { $!color ~ " " ~ %(:p<pawn>, :n<knight>, :b<bishop>, :r<rook>, :q<queen>, :k<king>){$symbol} }
 }
 class Pawn   does Piece['p',  1] { method offsets { (constant @ = 16, 32, 17, 15).map: * * ($.color == white ?? +1 !! -1) } }
 class Knight does Piece['n',  2] { method offsets { constant @ = -18, -33, -31, -14, 18, 33, 31, 14 } }
@@ -47,13 +72,29 @@ class King   does Piece['k', 32] { method offsets { constant @ = -17, -16, -15, 
 has Piece @!board[128];
 method !board { @!board }
 
+method board {
+    do for square::{*}.sort(*.value).rotor(8) -> @row {
+	do for @row -> $i {
+	    if !@!board[$i].defined {
+		Any
+	    } else {
+		%(
+		    :square(~$i),
+		    :type(@!board[$i].symbol.lc),
+		    :color(@!board[$i].color)
+		)
+	    }
+	}.Array
+    }.Array
+}
+
 has square %.kings{color};
 has color $.turn;
 has Set[castling-rights] $.castling-rights;
 has en-passant-square $.en-passant;
 has UInt ($.half-moves-count, $.move-number);
 
-multi method new(Str $fen = startpos) {
+multi method new(Str $fen = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1}) {
     use Chess::FEN;
     my square %kings{color};
     my Piece @board[128];
