@@ -14,20 +14,20 @@ rule string { '"' ~ '"' <+graph+space+[+\-`]-[\"]>*? }
 rule move {
   <(<move-number> <half-move> <half-move>?)>
 }
-token half-move {
+rule half-move {
     [
 	|| <castle>
 	|| <promotion>
 	|| <piece-moves>
 	|| <pawn-moves>
     ]< + ++ # >?<annotation>?
-    <nag>* <comment>*
+    <nag>? <comment>?
 }
 token annotation { < ?? ? !? ?! ! !! > }
 token nag { '$'<.digit>+ }
 rule comment { 
-    | '{' .+? '}' 
-    | '(' <move>+ ')'
+    | '{' ~ '}' .+?
+    | '(' ~ ')' <move>+
 }
 
 token pawn-moves { [<file>x]?<square> }
