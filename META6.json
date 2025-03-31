@@ -2,7 +2,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.10.1",
+    "version" : "0.10.2",
     "description" : "Chess-related stuff in raku.",
     "author" : "L. Grondin",
     "build-depends" : [ ],
@@ -31,7 +31,14 @@
 	    "images/b.png",
 	    "images/n.png",
 	    "images/r.png",
-	    "images/p.png"
+	    "images/p.png",
+	    "Capablanca.pgn",
+	    "Morphy.pgn",
+	    "Fischer.pgn",
+	    "Karpov.pgn",
+	    "Kasparov.pgn",
+	    "WorldChamp2013.pgn",
+	    "WorldChamp2013-annotated.pgn"
     ],
     "source-url" : "git://github.com/grondilu/chess.git"
 }
