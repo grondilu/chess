@@ -193,7 +193,6 @@ class Position {
 	my @squares = $square ?? ($square,) !! square::{*};
 	my $before = self;
 
-	(state %){self.uint.base(36)} //=
 	my Move @ = gather {
 	    for @squares -> $from {
 
@@ -868,6 +867,23 @@ class QueensideCastle does Castle {
     method pseudo-SAN { 'O-O-O' }
 }
 
+class Game {
+    has Pair @.info;
+    multi method new(Str $pgn where /^<Chess::PGN::game>/) {
+	my @info;
+	Chess::PGN.parse:
+	$pgn,
+	actions => class {
+	    method info($/) { @info.push: $<tag> => $<string> }
+	}.new;
+	self.bless: :@info;
+    }
+    method pgn {
+	join "\n",
+	map { qq《[{.key} {.value}] 》}, @!info;
+    }
+}
+
 multi legal-moves(Position $pos) { samewith $pos.fen }
 multi legal-moves(Str $fen where { Chess::FEN.parse: $_ }) is export {
     Chess::Position.new($fen).moves
@@ -905,4 +921,12 @@ sub show(Position $pos) is export {
     }
 }
 
+sub perft(UInt $depth, Position :$position = startpos) returns UInt is export {
+  my $nodes = 0;
+  for $position.moves -> $move {
+      if $depth > 1 { $nodes += samewith $depth - 1, position => $move.after; }
+      else { $nodes++ }
+  }
+  return $nodes;
+}
 # vi: ft=raku nowrap nu shiftwidth=4
