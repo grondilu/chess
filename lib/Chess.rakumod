@@ -263,7 +263,7 @@ class Position {
 			my square $castling-from = %!kings{$us};
 			my square $castling-to   = square($castling-from - 2);
 			if 
-			    !@!board[square($castling-from + 1)] &&
+			    !@!board[square($castling-from - 1)] &&
 			    !@!board[$castling-to] &&
 			    !self!attacked($them, %!kings{$us}) &&
 			    !self!attacked($them, square($castling-from - 1)) &&
