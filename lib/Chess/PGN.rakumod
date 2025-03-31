@@ -15,8 +15,7 @@ rule move {
   <(<move-number> <half-move> ** 1..2)>
 }
 rule half-move {
-    <pseudo-half-move>< + ++ # >?<annotation>?
-    <nag>? <comment>?
+    <(<pseudo-half-move>< + ++ # >?<annotation>?[ <nag>? <comment>?]?)>
 }
 token annotation { < ?? ? !? ?! ! !! > }
 token nag { '$'<.digit>+ }
