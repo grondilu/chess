@@ -817,7 +817,7 @@ class PawnMove is Move {
 
 class Promotion is PawnMove {
   has Piece $.promotion;
-  method uint { self.Move.uint + 8**3 * %(Knight, Bishop, Rook, Queen Z=> 1..4){$!promotion} }
+  method uint { self.Move::uint + 8**3 * %(Knight, Bishop, Rook, Queen Z=> 1..4){$!promotion} }
   method LAN { self.Move::LAN ~ $!promotion.symbol }
   method pseudo-SAN {
       self.PawnMove::SAN ~ '=' ~ $!promotion.symbol
