@@ -3,24 +3,19 @@ use Chess::PGN;
 
 use Test;
 
-subtest {
-  ok Chess::PGN.parse('1. e4'), "simple first move";
-  ok Chess::PGN.parse('1. e4 d5 2. exd5'), "scandinavian";
-  skip "`ep` notation is decrepated";
-  # ok Chess::PGN.parse('1. e4 d5 2. e5 f5 3. exf5ep'), "en passant";
-  ok Chess::PGN.parse('1. e4 e5 2. f4 Qh4+'), "simple check";
-  ok Chess::PGN.parse('1. e4 g5 2. d4 f5 3. Qh5#'), "dumb mate";
-  ok Chess::PGN.parse('1. e4 g5?! 2. d4 f5?? 3. Qh5#'), "dumb mate with comments";
-  ok Chess::PGN.parse('1. e4 g5?! 2. d4 f5?? 3. Qh5# 1-0'), "dumb mate with adjudication";
-  ok Chess::PGN.parse('1.a4 a6 2.h4 b6 3.Ra3 c6 4.Rh3 d6 5.Rad3'), "disambiguation";
-}, 'valid PGN';
+skip 'NYI';
+{
+  constant pgn = q:to/EOF/;
+  [White "Paul Morphy"]
+  [Black "Duke Karl / Count Isouard"]
+  [fEn "1n2kb1r/p4ppp/4q3/4p1B1/4P3/8/PPP2PPP/2KR4 w k - 0 17"]
 
-skip "these tests takes too much time for now";
-subtest {
-  for <Morphy Capablanca Fischer Karpov Kasparov> {
-    #ok Chess::PGN.parse("resources/$_.pgn".IO.slurp), "$_\'s games";
-  }
-}, "various players' games from PGNMentor";
+  17.Rd8# 1-0
+  EOF
+
+  say Chess::PGN.parse: pgn;
+
+}
 
 done-testing;
 

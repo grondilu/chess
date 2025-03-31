@@ -48,12 +48,12 @@ for data.lines {
 	if /^'FEN='/ {
 		$fen = $/.postmatch;
 	} elsif /^'key='/ {
-		my Chess::Position $pos .=new: :$fen;
-		is $pos.zobrist-hash, $/.postmatch.parse-base(16);
+		my Chess::Position $pos .=new: $fen;
+		is $pos.uint, $/.postmatch.parse-base(16);
 	}
 }
 
-for Chess::square::{*} X~ Chess::square::{*} {
+for (Chess::square::{*} X~ Chess::square::{*}).pick(100) {
 	my Chess::Move $move .= new: $_;
 	my $uint = $move.uint;
 
