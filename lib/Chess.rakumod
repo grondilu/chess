@@ -894,13 +894,13 @@ sub show(Position $pos) is export {
 
 	my $shell-command = gather {
 	    my Bool $flip-board = $pos.turn ~~ black;
-	    take "magick <(basenc --base64 -d <<<{Chess::Graphics::checkerboard}) png:-";
+	    take "magick {Chess::Graphics::checkerboard} png:-";
 	    my ($r, $c) = 0, 0;
 	    for $pos.board -> @rank {
 		for @rank {
 		    if .defined {
 			my ($R, $C) = ($r, $c).map: { $Chess::Graphics::square-size * ($flip-board ?? 7 - $_ !! $_) }
-			take "composite -geometry +$C+$R <(basenc --base64 -d <<<{%Chess::Graphics::pieces{.value.symbol}}) - png:-";
+			take "composite -geometry +$C+$R %Chess::Graphics::pieces{.value.symbol} - png:-";
 		    }
 		    $c++;
 		}
