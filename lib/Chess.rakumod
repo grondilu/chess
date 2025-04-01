@@ -898,15 +898,16 @@ sub show(Position $pos) is export {
 		encode-base64($resource.slurp(:bin)).join
 	    }
 	    my Bool $flip-board = $pos.turn ~~ black;
-	    my $checkboard = encode %?RESOURCES<images/checkerboard.png>;
+	    constant $checkboard = encode %?RESOURCES<images/checkerboard.png>;
+	    constant %pieces = <K Q R B N P k q r b n p>.map: { $_ => encode(%?RESOURCES{"images/$_.png"}) };
+
 	    take qq{magick <(basenc -d --base64 <<<"$checkboard") png:-};
 	    my ($r, $c) = 0, 0;
 	    for $pos.board -> @rank {
 		for @rank {
 		    if .defined {
-			my $piece-png = encode %?RESOURCES{"images/{.value.symbol}.png"};
 			my ($R, $C) = ($r, $c).map: { $square-size * ($flip-board ?? 7 - $_ !! $_) }
-			take qq{composite -geometry +$C+$R <(basenc -d --base64 <<<"$piece-png") - png:-};
+			take qq{composite -geometry +$C+$R <(basenc -d --base64 <<<"%pieces{.value.symbol}") - png:-};
 		    }
 		    $c++;
 		}
