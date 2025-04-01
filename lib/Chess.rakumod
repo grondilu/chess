@@ -895,7 +895,7 @@ sub show(Position $pos) is export {
 	my $shell-command = gather {
 	    sub encode(Distribution::Resource $resource --> Str) {
 		use Base64;
-		encode-base64($resource.slurp(:bin)).join
+		encode-base64($resource.slurp(:bin, :close)).join
 	    }
 	    my Bool $flip-board = $pos.turn ~~ black;
 	    constant $checkboard = encode %?RESOURCES<images/checkerboard.png>;
