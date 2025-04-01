@@ -1,9 +1,9 @@
 {
-    "auth" : "github:grondilu",
+    "auth" : "zef:grondilu",
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.15.2",
+    "version" : "0.15.1",
     "description" : "Chess-related stuff in raku.",
     "authors" : [
 	"Lucien Grondin"
