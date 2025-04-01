@@ -898,8 +898,8 @@ sub show(Position $pos) is export {
 		encode-base64($resource.slurp(:bin, :close)).join
 	    }
 	    my Bool $flip-board = $pos.turn ~~ black;
-	    constant $checkboard = encode %?RESOURCES<images/checkerboard.png>;
-	    constant %pieces = <K Q R B N P k q r b n p>.map: { $_ => encode(%?RESOURCES{"images/$_.png"}) };
+	    my $checkboard = encode %?RESOURCES<images/checkerboard.png>;
+	    my %pieces = <K Q R B N P k q r b n p>.map: { $_ => encode(%?RESOURCES{"images/$_.png"}) };
 
 	    take qq{magick <(basenc -d --base64 <<<"$checkboard") png:-};
 	    my ($r, $c) = 0, 0;
