@@ -4,7 +4,7 @@ rule TOP { ^ <game>+ $ }
 
 rule game {
   [ <info>* <move>+ | <info>+ ] <adjudication>?
-  <?{ [&&] $<move>»<move-number>».made Z== 1..* }>
+  <?{ [&&] $<move>»<move-number>».made Z== ($<move>»<move-number>.first.made, * + 1 ... *) }>
 }
 
 rule info { <('[' ~ ']'[<tag> <string>])> }
@@ -12,14 +12,14 @@ token tag { <.alpha>+ }
 rule string { '"' ~ '"' <+graph+space+[+\-`]-[\"]>*? }
 
 rule move {
-  <(<move-number> <half-move> ** 1..2)>
+  <move-number> [<half-move> <nag>? <comment>?] ** 1..2
 }
-rule half-move {
-    <(<pseudo-half-move>< + ++ # >?<annotation>?[ <nag>? <comment>?]?)>
+token half-move {
+    <pseudo-half-move>< + ++ # >?<annotation>?
 }
-token annotation { < ?? ? !? ?! ! !! > }
-token nag { '$'<.digit>+ }
-rule comment { 
+token annotation { <[?!]> ** 1..2 }
+rule nag { '$'<.digit>+ }
+token comment { 
     | '{' ~ '}' .+?
     | '(' ~ ')' <move>+
 }
