@@ -890,17 +890,17 @@ multi legal-moves(Str $fen where { Chess::FEN.parse: $_ }) is export {
 }
 sub show(Position $pos) is export {
     if %*ENV<TERM> eq 'xterm-kitty' {
-	use Chess::Graphics;
+	constant $square-size = 60;
 
 	my $shell-command = gather {
 	    my Bool $flip-board = $pos.turn ~~ black;
-	    take "magick {Chess::Graphics::checkerboard} png:-";
+	    take "magick {%?RESOURCES<images/checkerboard.png>.absolute} png:-";
 	    my ($r, $c) = 0, 0;
 	    for $pos.board -> @rank {
 		for @rank {
 		    if .defined {
-			my ($R, $C) = ($r, $c).map: { $Chess::Graphics::square-size * ($flip-board ?? 7 - $_ !! $_) }
-			take "composite -geometry +$C+$R %Chess::Graphics::pieces{.value.symbol} - png:-";
+			my ($R, $C) = ($r, $c).map: { $square-size * ($flip-board ?? 7 - $_ !! $_) }
+			take "composite -geometry +$C+$R {%?RESOURCES{"images/{.value.symbol}.png"}.absolute} - png:-";
 		    }
 		    $c++;
 		}
@@ -929,4 +929,5 @@ sub perft(UInt $depth, Position :$position = startpos) returns UInt is export {
   }
   return $nodes;
 }
+
 # vi: ft=raku nowrap nu shiftwidth=4
