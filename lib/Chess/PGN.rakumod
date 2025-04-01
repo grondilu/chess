@@ -1,40 +1,46 @@
 unit grammar Chess::PGN;
+# https://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
 
-rule TOP { ^ <game>+ $ }
-
-rule game {
-  [ <info>* <move>+ | <info>+ ] <adjudication>?
-  <?{ [&&] $<move>»<move-number>».made Z== ($<move>»<move-number>.first.made, * + 1 ... *) }>
+# treating comments as white space
+token ws {
+  <!ww>
+  [ <comment> | \s ]*
+}
+rule comment { 
+  \{ ~ \} [<+print-[}]>* % \s*] |
+  \; <.print>* $$
 }
 
-rule info { <('[' ~ ']'[<tag> <string>])> }
-token tag { <.alpha>+ }
-rule string { '"' ~ '"' <+graph+space+[+\-`]-[\"]>*? }
+rule TOP { ^ <game>* $ }
+
+rule game { <tag-pair-section> <movetext-section> <game-termination> }
+
+rule tag-pair-section { <tag-pair>* % \s* }
+rule movetext-section { <move>+ }
+
+regex tag-pair { \[ ~ \] [\s*<name=symbol>\s*<value=string>\s*] }
 
 rule move {
-  <move-number> [<half-move> <nag>? <comment>?] ** 1..2
-}
-token half-move {
-    <pseudo-half-move>< + ++ # >?<annotation>?
-}
-token annotation { <[?!]> ** 1..2 }
-rule nag { '$'<.digit>+ }
-token comment { 
-    | '{' ~ '}' .+?
-    | '(' ~ ')' <move>+
+  <move-number-indication>?\h*<SAN><[+#]>?[<[!?]> ** 1..2]? <NAG> * <RAV> *
 }
 
-token pseudo-half-move { <+castle+promotion+piece-move+pawn-move> }
+rule RAV { \( ~ \) <move>* }
+rule move-number-indication { <integer>\.* }
+
+token SAN {
+  <castle> |
+  <promotion> |
+  <piece-move> |
+  <pawn-move>
+}
 token pawn-move { [<file>x]?<square> }
-token piece-move { <piece><disambiguation>??x?<square> }
-token castle     { [ 'O-O' '-O'? | 'o-o' '-o'? ] }
+rule piece-move { <piece><disambiguation>??x?<square> }
+token castle     { O ** 2..3 % \- }
 token promotion  { <pawn-move>'='<piece> }
 
-token disambiguation { <file> | <rank> | <file><rank> }
+token disambiguation { <file> | <rank> | <square> }
 
-token move-number { (<digit>+)< . ... > { make +$0 } }
-
-token adjudication { <white-wins> | <black-wins> | <draw> | <aborted-game> }
+token game-termination { <white-wins> | <black-wins> | <draw> | <aborted-game> }
 token white-wins { '1-0' }
 token black-wins { '0-1' }
 token draw       { '1/2-1/2' | \c[VULGAR FRACTION ONE HALF] ** 2 % '-' }
@@ -44,6 +50,13 @@ token piece { <[KQRBN]> }
 token rank  { <[1..8]> }
 token file  { <[a..h]> }
 token square { <file> <rank> }
+
+token string { '"' ~ '"' [ '\"' | '\\' | <.print> ] **? 0..255 }
+token symbol { <alnum> <symbol-continuation-character> ** 0..254 }
+token integer { \d ** 0..255 }
+
+token symbol-continuation-character { <+alnum+[+\#=:-]> }
+token NAG { '$'<.digit>+ }
 
 
 # vi: shiftwidth=2

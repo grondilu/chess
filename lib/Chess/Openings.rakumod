@@ -18,7 +18,7 @@ our constant @data = [
     .map:
 	{
 	    .splice(
-		2, 1, .tail.comb(/<Chess::PGN::half-move>/).map(*.trim).join
+		2, 1, .tail.comb(/<Chess::PGN::SAN>/).join
 	    );
 	    $_ 
 	}

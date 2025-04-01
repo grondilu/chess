@@ -51,7 +51,7 @@ constant %SECOND-RANK = (white) => rank(a2), (black) => rank(a7);
 constant RANK-ONE   = rank(a1);
 constant RANK-EIGHT = rank(a8);
 
-subset SAN of Str is export where /^<Chess::PGN::half-move>$/;
+subset SAN of Str is export where /^<Chess::PGN::SAN>$/;
 
 multi infix:<*>(Position $position, SAN $move --> Position) is export { Move.new($move, :$position).after }
 
