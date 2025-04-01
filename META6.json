@@ -3,7 +3,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.14.7",
+    "version" : "0.15.0",
     "description" : "Chess-related stuff in raku.",
     "authors" : [
 	"Lucien Grondin"
@@ -42,11 +42,11 @@
 	    "Kasparov.pgn",
 	    "WorldChamp2013.pgn",
 	    "WorldChamp2013-annotated.pgn",
-	    "chess-openings/a.tsv",
-	    "chess-openings/b.tsv",
-	    "chess-openings/c.tsv",
-	    "chess-openings/d.tsv",
-	    "chess-openings/e.tsv"
+	    "openings/a.tsv",
+	    "openings/b.tsv",
+	    "openings/c.tsv",
+	    "openings/d.tsv",
+	    "openings/e.tsv"
     ],
     "source-url" : "git://github.com/grondilu/chess.git"
 }

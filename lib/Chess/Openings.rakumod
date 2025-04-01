@@ -4,11 +4,11 @@ use Chess::PGN;
 #
 
 our constant @data = [
-    %?RESOURCES<chess-openings/a.tsv>,
-    %?RESOURCES<chess-openings/b.tsv>,
-    %?RESOURCES<chess-openings/c.tsv>,
-    %?RESOURCES<chess-openings/d.tsv>,
-    %?RESOURCES<chess-openings/e.tsv>
+    %?RESOURCES<openings/a.tsv>,
+    %?RESOURCES<openings/b.tsv>,
+    %?RESOURCES<openings/c.tsv>,
+    %?RESOURCES<openings/d.tsv>,
+    %?RESOURCES<openings/e.tsv>
 ]
     .map(*.slurp).join
     .lines
