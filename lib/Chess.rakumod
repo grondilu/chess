@@ -893,14 +893,20 @@ sub show(Position $pos) is export {
 	constant $square-size = 60;
 
 	my $shell-command = gather {
+	    sub encode(Distribution::Resource $resource --> Str) {
+		use Base64;
+		encode-base64($resource.slurp(:bin)).join
+	    }
 	    my Bool $flip-board = $pos.turn ~~ black;
-	    take "magick {%?RESOURCES<images/checkerboard.png>.absolute} png:-";
+	    my $checkboard = encode %?RESOURCES<images/checkerboard.png>;
+	    take qq{magick <(basenc -d --base64 <<<"$checkboard") png:-};
 	    my ($r, $c) = 0, 0;
 	    for $pos.board -> @rank {
 		for @rank {
 		    if .defined {
+			my $piece-png = encode %?RESOURCES{"images/{.value.symbol}.png"};
 			my ($R, $C) = ($r, $c).map: { $square-size * ($flip-board ?? 7 - $_ !! $_) }
-			take "composite -geometry +$C+$R {%?RESOURCES{"images/{.value.symbol}.png"}.absolute} - png:-";
+			take qq{composite -geometry +$C+$R <(basenc -d --base64 <<<"$piece-png") - png:-};
 		    }
 		    $c++;
 		}
