@@ -34,7 +34,7 @@ token SAN {
   <pawn-move>
 }
 token pawn-move { [<file>x]?<square> }
-rule piece-move { <piece><disambiguation>??x?<square> }
+regex piece-move { <piece><disambiguation>??x?<square> }
 token castle     { O ** 2..3 % \- }
 token promotion  { <pawn-move>'='<piece> }
 
@@ -51,7 +51,8 @@ token rank  { <[1..8]> }
 token file  { <[a..h]> }
 token square { <file> <rank> }
 
-token string { '"' ~ '"' [ '\"' | '\\' | <.print> ] **? 0..255 }
+token string { '"' ~ '"' [ '\"' | '\\' | <+graph+space+[`\'+-]-[\"]-cntrl> ] **? 0..255 }
+#token string { '"' ~ '"' [ '\"' | '\\' | <+print-[\"]> ] **? 0..255 }
 token symbol { <alnum> <symbol-continuation-character> ** 0..254 }
 token integer { \d ** 0..255 }
 
