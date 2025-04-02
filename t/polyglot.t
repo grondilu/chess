@@ -53,11 +53,12 @@ for data.lines {
 	}
 }
 
-for (Chess::square::{*} X~ Chess::square::{*}).pick(100) {
-	my Chess::Move $move .= new: $_;
+for startpos.moves -> $move {
 	my $uint = $move.uint;
 
-	is $uint, Chess::Move.new($uint).uint, qq{"$_" -> $uint -> "$_"};
+	given $move.gist {
+		is $uint, Chess::Move.new($uint).uint, qq{"$_" -> $uint -> "$_"};
+	}
 }
 	
 

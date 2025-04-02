@@ -359,6 +359,27 @@ class Position {
     method isCheckmate returns Bool {  self.isCheck && self.moves.elems == 0 }
     method isStalemate returns Bool { !self.isCheck && self.moves.elems == 0 }
 
+    method best-move(Str :$engine = 'stockfish', UInt :$time = 10, UInt :$threads = 15) {
+	my $best-move;
+	my $process = Proc::Async.new: :w, $engine;
+	react {
+	    whenever $process.stdout.lines {
+		if /^'bestmove '([<[a..h]><[1..8]>]**2<[qnbr]>?)/ {
+		    whenever $process.say: "quit" {
+			$best-move = Chess::Move.new: ~$/[0], :position(self);
+		    }
+		}
+	    }
+	    whenever $process.start { done }
+	    whenever $process.say: "go infinite" {
+		whenever Promise.in($time) {
+		    await $process.say: "stop";
+		}
+	    }
+	}
+	return $best-move;
+    }
+
     method isInsufficientMaterial returns Bool {
 	my UInt %pieces{Piece} = (Pawn, Bishop, Knight, Rook, Queen, King) X=> 0;
 	my @bishops;
@@ -679,7 +700,7 @@ class Move {
 	self.bless: :$from, :$to, :$promotion, :$before;
     }
     multi method new(Str $move where /^[<[a..h]><[1..8]>]**2$/, Position :position($before) = startpos --> Move) {
-	self.bless: :$before, :from(square::{$move.substr(0, 2)}), :to(square::{$move.substr(2, 2)})
+	$before.moves.first({ .LAN eq $move });
     }
     multi method new(SAN $move, Position :position($before)) {
 	$before
@@ -888,6 +909,7 @@ multi legal-moves(Position $pos) { samewith $pos.fen }
 multi legal-moves(Str $fen where { Chess::FEN.parse: $_ }) is export {
     Chess::Position.new($fen).moves
 }
+
 sub show(Position $pos) is export {
     if %*ENV<TERM> eq 'xterm-kitty' {
 	constant $square-size = 60;
