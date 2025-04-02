@@ -116,6 +116,9 @@ class Position {
     has en-passant-square $.en-passant;
     has UInt ($.half-moves-count, $.move-number);
 
+    submethod TWEAK {
+	fail "illegal position" if %!kings{¬$!turn} && self!attacked($!turn, %!kings{¬$!turn});
+    }
     multi method new(*@moves where @moves.all ~~ SAN, Position :from($startpos) = startpos) {
 	reduce -> $position, $move { Move.new($move, :$position).after }, $startpos, |@moves;
     }
@@ -160,6 +163,7 @@ class Position {
 
     method pass { 
 	self.bless:
+	:%!kings,
 	:@!board,
 	:turn(¬$!turn),
 	:%!castling-rights,
@@ -360,6 +364,12 @@ class Position {
     method isStalemate returns Bool { !self.isCheck && self.moves.elems == 0 }
 
     method best-move(Str :$engine = 'stockfish', UInt :$time = 10, UInt :$threads = 15) {
+	my Str $init-string;
+	$init-string ~= "setoption name Threads value $threads\n" if $engine eq 'stockfish';
+	$init-string ~= [
+	    "position fen {self.fen}",
+	    "go infinite"
+	].join("\n");
 	my $best-move;
 	my $process = Proc::Async.new: :w, $engine;
 	react {
@@ -371,7 +381,7 @@ class Position {
 		}
 	    }
 	    whenever $process.start { done }
-	    whenever $process.say: "go infinite" {
+	    whenever $process.say: $init-string {
 		whenever Promise.in($time) {
 		    await $process.say: "stop";
 		}
@@ -700,7 +710,7 @@ class Move {
 	self.bless: :$from, :$to, :$promotion, :$before;
     }
     multi method new(Str $move where /^[<[a..h]><[1..8]>]**2$/, Position :position($before) = startpos --> Move) {
-	$before.moves.first({ .LAN eq $move });
+	$before.moves.first({ .LAN eq $move }) or fail "illegal move $move";
     }
     multi method new(SAN $move, Position :position($before)) {
 	$before
