@@ -3,7 +3,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.15.5",
+    "version" : "0.15.6",
     "description" : "Chess-related stuff in raku.",
     "authors" : [
 	"Lucien Grondin"

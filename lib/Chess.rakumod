@@ -116,9 +116,6 @@ class Position {
     has en-passant-square $.en-passant;
     has UInt ($.half-moves-count, $.move-number);
 
-    submethod TWEAK {
-	fail "illegal position" if %!kings{¬$!turn} && self!attacked($!turn, %!kings{¬$!turn});
-    }
     multi method new(*@moves where @moves.all ~~ SAN, Position :from($startpos) = startpos) {
 	reduce -> $position, $move { Move.new($move, :$position).after }, $startpos, |@moves;
     }
@@ -224,7 +221,7 @@ class Position {
 			try $to = square($from + $pawn.offsets[$j]);
 			next if $!;
 			if @!board[$to].defined && @!board[$to].color ~~ $them {
-			    take PawnMove.bless: :$before, :$from, :$to;
+			    take PawnMove.bless: :$before, :$from, :$to, :is-capture;
 			} elsif $!en-passant && $to ~~ $!en-passant {
 			    take EnPassant.bless: :$before, :$from, :$to;
 			}
@@ -249,7 +246,7 @@ class Position {
 		}
 	    }
 	    if $piece !~~ ActualPiece || $piece ~~ King {
-		if $piece !~~ ActualPiece || $square.defined && $square == %!kings{$us} {
+		if $piece ~~ King || $square.defined && $square == %!kings{$us} {
 		    if kingside ∈ %!castling-rights{$us} {
 			my square $castling-from = %!kings{$us};
 			my square $castling-to   = square($castling-from + 2);
@@ -724,6 +721,7 @@ class Move {
 	join '',
 	self.piece.symbol.uc,
 	getDisambiguator(self, self.before.moves),
+	$!is-capture ?? 'x' !! '',
 	$!to
     }
     method SAN {
