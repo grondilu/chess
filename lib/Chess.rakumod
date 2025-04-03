@@ -193,7 +193,7 @@ class Position {
 	my @squares = $square ?? ($square,) !! square::{*};
 	my $before = self;
 
-	#(state %){self.uint.base(36)} //=
+	(state %){self.uint.base(36)}{$legal}{$piece ~~ ActualPiece ?? $piece.symbol !! 'any'}{$square // 'all'} //=
 	my Move @ = gather {
 	    for @squares -> $from {
 		if !@!board[$from].defined || @!board[$from].color ~~ $them {
