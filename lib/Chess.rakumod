@@ -48,8 +48,7 @@ our sub rank(square $sq) { $sq +>  4 }
 our sub file(square $sq) { $sq +& 15 }
 
 constant %SECOND-RANK = (white) => rank(a2), (black) => rank(a7);
-constant RANK-ONE   = rank(a1);
-constant RANK-EIGHT = rank(a8);
+constant PROMOTION-RANK = rank(a1)|rank(a8);
 
 subset SAN of Str is export where /^<Chess::PGN::SAN>$/;
 
@@ -197,7 +196,6 @@ class Position {
 	#(state %){self.uint.base(36)} //=
 	my Move @ = gather {
 	    for @squares -> $from {
-
 		if !@!board[$from].defined || @!board[$from].color ~~ $them {
 		    next;
 		}
@@ -207,21 +205,27 @@ class Position {
 		    next if $piece ~~ ActualPiece && $piece !~~ Pawn;
 		    $to = square($from + $pawn.offsets[0]);
 		    if !@!board[$to] {
-			if rank($to) == RANK-ONE|RANK-EIGHT {
+			if rank($to) == PROMOTION-RANK {
 			    for Queen, Knight, Bishop, Rook -> $promotion {
 				take Promotion.bless: :$before, :$from, :$to, :$promotion
 			    }
 			} else { take PawnMove.bless: :$before, :$from, :$to; }
-			$to = square($from + $pawn.offsets[1]);
-			if rank($from) == %SECOND-RANK{$us} && !@!board[$to] {
-			    take BigPawnMove.bless: :$before, :$from, :$to;
+			try $to = square($from + $pawn.offsets[1]);
+			unless $! {
+			    if rank($from) == %SECOND-RANK{$us} && !@!board[$to] {
+				take BigPawnMove.bless: :$before, :$from, :$to;
+			    }
 			}
 		    }
 		    for 2..^4 -> $j {
 			try $to = square($from + $pawn.offsets[$j]);
 			next if $!;
 			if @!board[$to].defined && @!board[$to].color ~~ $them {
-			    take PawnMove.bless: :$before, :$from, :$to, :is-capture;
+			    if rank($to) == PROMOTION-RANK {
+				for Queen, Knight, Bishop, Rook -> $promotion {
+				    take Promotion.bless: :$before, :$from, :$to, :$promotion, :is-capture;
+				}
+			    } else { take PawnMove.bless: :$before, :$from, :$to, :is-capture; }
 			} elsif $!en-passant && $to ~~ $!en-passant {
 			    take EnPassant.bless: :$before, :$from, :$to;
 			}
@@ -706,7 +710,7 @@ class Move {
 	my ($from, $to) = map -> ($f, $r) { square::{['a'..'h'][$f] ~ (8 - $r)} }, ($from-file, $from-rank), ($to-file, $to-rank);
 	self.bless: :$from, :$to, :$promotion, :$before;
     }
-    multi method new(Str $move where /^[<[a..h]><[1..8]>]**2$/, Position :position($before) = startpos --> Move) {
+    multi method new(Str $move where /^[<[a..h]><[1..8]>]**2<[qnbr]>?$/, Position :position($before) = startpos --> Move) {
 	$before.moves.first({ .LAN eq $move }) or fail "illegal move $move";
     }
     multi method new(SAN $move, Position:D :position($before)) {
@@ -721,7 +725,7 @@ class Move {
 	join '',
 	self.piece.symbol.uc,
 	getDisambiguator(self, self.before.moves),
-	$!is-capture ?? 'x' !! '',
+	self.is-capture ?? 'x' !! '',
 	$!to
     }
     method SAN {
@@ -737,7 +741,7 @@ class Move {
 	my Piece @board[128] =  $!before!Position::board<>;
 	my color $turn       = ¬$!before.turn;
 	my Set[castling-rights] %castling-rights{color} = $!before.castling-rights<>;
-	my en-passant-square $en-passant = $!before.en-passant;
+	my en-passant-square $en-passant;
 	my UInt $half-moves-count = $!before.half-moves-count + 1;
 	my UInt $move-number = $!before.move-number;
 	$move-number++ if $!before.turn ~~ black;
@@ -760,6 +764,7 @@ class Move {
 	    }
 	    when Pawn {
 		$half-moves-count = 0;
+		$en-passant = square($!to - $moving-piece.offsets[0]) if self ~~ BigPawnMove;
 	    }
 	    when !* {
 		fail "there is no piece on square $!from";
@@ -799,7 +804,7 @@ class Move {
 	}
     }
     sub strippedSan(Str $move) {
-	$move.subst(/[\=|<[+#]><[?!]>*]/, "");
+	$move.subst(/[<[+#]><[?!]>*]/, "");
     }
     sub getDisambiguator(Move $move, Move @moves) {
 	my square ($from, $to) = $move.from, $move.to;
@@ -849,11 +854,11 @@ class Promotion is PawnMove {
   method uint { self.Move::uint + 8**3 * %(Knight, Bishop, Rook, Queen Z=> 1..4){$!promotion} }
   method LAN { self.Move::LAN ~ $!promotion.symbol }
   method pseudo-SAN {
-      self.PawnMove::SAN ~ '=' ~ $!promotion.symbol
+      self.PawnMove::pseudo-SAN ~ '=' ~ $!promotion.symbol.uc
   }
   method move-pieces(@board) {
     @board[$.from]:delete;
-    @board[$.to] = $!promotion;
+    @board[$.to] = $!promotion.new: :color(self.before.turn);
   }
 }
 
@@ -862,11 +867,12 @@ class BigPawnMove is PawnMove {
 }
 
 class EnPassant is PawnMove {
-  method pseudo-SAN { $.from.substr(0, 1) ~ 'x' ~ $.before.en-passant }
-  method move-pieces(@board) {
-    self.Move::move-pieces(@board);
-    @board[self.en-passant + ($.before.turn == white ?? -16 !! +16)]:delete;
-  }
+    has Bool $.is-capture = True;
+    method pseudo-SAN { $.from.substr(0, 1) ~ 'x' ~ $.before.en-passant }
+    method move-pieces(@board) {
+	self.Move::move-pieces(@board);
+	@board[square(self.before.en-passant - @board[self.to].offsets[0])]:delete;
+    }
 }
 
 # Castling here will work only for standard chess,
@@ -894,44 +900,6 @@ class QueensideCastle does Castle {
     method king-step { -1 }
     method king-rook-distance { 4 }
     method pseudo-SAN { 'O-O-O' }
-}
-
-class Game {
-    has Pair @.tag-pair;
-    has Move @.moves;
-    has Str $.termination;
-    multi method new(Str $pgn where /^<Chess::PGN::game>/) {
-	my Pair @tag-pair;
-	my Move @moves;
-	my Str $termination = '*';
-	Chess::PGN.parse:
-	    $pgn,
-	    actions => class {
-		method tag-pair($/) { @tag-pair.push: ~$<name> => ~$<value> }
-		method movetext-section($/) {
-		    for $<move>»<SAN> {
-			@moves.push:
-			my Move $move .= new:
-			.Str,
-			:position(@moves ?? @moves.tail.after !! startpos);
-		    }
-		}
-		method game-termination($/) { $termination = ~$/ }
-	    }
-	;
-	self.bless: :@tag-pair, :@moves, :$termination;
-    }
-    method gist { self.pgn }
-    method pgn {
-	join "\n",
-	@!tag-pair.map({ qq《[{.key} {.value}] 》}),
-	Q{},
-	join Q{},
-	|(@!moves».SAN.rotor(2).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
-	$!termination
-	;
-
-    }
 }
 
 multi legal-moves(Position $pos) { samewith $pos.fen }
@@ -976,6 +944,43 @@ sub show(Position $pos) is export {
 	].join !! "\e_a=T,f=100,t=d;" ~ @payload.pick ~ "\e\\"
     } else {
 	say $pos.ascii
+    }
+}
+
+our sub load-games(IO::Path $pgn) {
+    gather {
+	Chess::PGN.parse:
+	$pgn.slurp,
+	actions => class Game {
+	    has Pair @.tag-pair;
+	    has Move @.moves;
+	    has Str $.termination;
+	    method game($/) {
+		take self.bless:
+		    :tag-pair($<tag-pair-section>.made),
+		    :moves($<movetext-section>.made),
+		    :termination($<game-termination>.made)
+	    }
+	    method tag-pair-section($/) { make my Pair @ = $<tag-pair>».made; }
+	    method tag-pair($/) { make ~$<name> => ~$<value> }
+	    method movetext-section($/) {
+		my Position $position .= new;
+		make my Move @ = gather for $<move>»<SAN> {
+		    take my Move $move .= new: .Str, :$position;
+		    $position = $move.after;
+		}
+	    }
+	    method game-termination($/) { make ~$/ }
+	    method pgn {
+		join "\n",
+		@!tag-pair.map({ qq《[{.key} {.value}] 》}),
+		Q{},
+		join Q{ },
+		|(@!moves».SAN.rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
+		"$!termination\n"
+		;
+	    }
+	}
     }
 }
 
