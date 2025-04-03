@@ -1,17 +1,15 @@
 {
     "auth" : "zef:grondilu",
-    "perl" : "6.*",
-    "name" : "Chess",
-    "license" : "Artistic-2.0",
-    "version" : "0.15.7",
-    "description" : "Chess-related stuff in raku.",
     "authors" : [
 	"Lucien Grondin"
     ],
+    "perl" : "6.*",
+    "name" : "Chess",
+    "license" : "Artistic-2.0",
+    "version" : "0.15.8",
+    "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
-    "test-depends" : [
-        "Test"
-    ],
+    "test-depends" : [ ],
     "depends" : [ ],
     "provides" : {
         "Chess::FEN"      : "lib/Chess/FEN.rakumod",
@@ -48,5 +46,8 @@
 	    "openings/d.tsv",
 	    "openings/e.tsv"
     ],
-    "source-url" : "git://github.com/grondilu/chess.git"
+    "source-url" : "git://github.com/grondilu/chess.git",
+    "tags" : [
+	    "CHESS"
+    ]
 }
