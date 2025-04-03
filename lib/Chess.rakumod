@@ -709,7 +709,7 @@ class Move {
     multi method new(Str $move where /^[<[a..h]><[1..8]>]**2$/, Position :position($before) = startpos --> Move) {
 	$before.moves.first({ .LAN eq $move }) or fail "illegal move $move";
     }
-    multi method new(SAN $move, Position :position($before)) {
+    multi method new(SAN $move, Position:D :position($before)) {
 	$before
 	    .moves(:piece(inferPieceType($move)))
 	    .first({ my $san = .SAN; $san|strippedSan($san) eq $move })
@@ -897,19 +897,40 @@ class QueensideCastle does Castle {
 }
 
 class Game {
-    has Pair @.info;
+    has Pair @.tag-pair;
+    has Move @.moves;
+    has Str $.termination;
     multi method new(Str $pgn where /^<Chess::PGN::game>/) {
-	my @info;
+	my Pair @tag-pair;
+	my Move @moves;
+	my Str $termination = '*';
 	Chess::PGN.parse:
-	$pgn,
-	actions => class {
-	    method info($/) { @info.push: $<tag> => $<string> }
-	}.new;
-	self.bless: :@info;
+	    $pgn,
+	    actions => class {
+		method tag-pair($/) { @tag-pair.push: ~$<name> => ~$<value> }
+		method movetext-section($/) {
+		    for $<move>»<SAN> {
+			@moves.push:
+			my Move $move .= new:
+			.Str,
+			:position(@moves ?? @moves.tail.after !! startpos);
+		    }
+		}
+		method game-termination($/) { $termination = ~$/ }
+	    }
+	;
+	self.bless: :@tag-pair, :@moves, :$termination;
     }
+    method gist { self.pgn }
     method pgn {
 	join "\n",
-	map { qq《[{.key} {.value}] 》}, @!info;
+	@!tag-pair.map({ qq《[{.key} {.value}] 》}),
+	Q{},
+	join Q{},
+	|(@!moves».SAN.rotor(2).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
+	$!termination
+	;
+
     }
 }
 
