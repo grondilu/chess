@@ -116,6 +116,7 @@ class Position {
     has en-passant-square $.en-passant;
     has UInt ($.half-moves-count, $.move-number);
 
+    has Move $.last-move;
     multi method new(*@moves where @moves.all ~~ SAN, Position :from($startpos) = startpos) {
 	reduce -> $position, $move { Move.new($move, :$position).after }, $startpos, |@moves;
     }
@@ -127,6 +128,7 @@ class Position {
 	my Set[castling-rights] %castling-rights{color};
 	my en-passant-square $en-passant;
 	my UInt ($half-moves-count, $move-number);
+	my Move $last-move;
 	Chess::FEN.parse:
 	$fen,
 	actions => class {
@@ -153,20 +155,21 @@ class Position {
 	    method full-move-number($/) { $move-number = +$/ }
 	}.new
 	;
-	self.bless: :%kings, :@board, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number;
+	self.bless: :%kings, :@board, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number, :$last-move;
     }
 
-    submethod BUILD(:%!kings, :@!board, :$!turn, :%!castling-rights, :$!en-passant, :$!half-moves-count, :$!move-number) {}
+    submethod BUILD(:%!kings, :@!board, :$!turn, :%!castling-rights, :$!en-passant, :$!half-moves-count, :$!move-number, :$!last-move) {}
 
     method pass { 
 	self.bless:
-	:%!kings,
-	:@!board,
+	:kings(%!kings<>),
+	:board(@!board<>),
 	:turn(¬$!turn),
-	:%!castling-rights,
+	:castling-rights(%!castling-rights<>),
 	:$!en-passant,
 	:$!half-moves-count,
-	:$!move-number
+	:$!move-number,
+	:last-move(Move)
     }
 
     method gist { self.fen }
@@ -194,7 +197,7 @@ class Position {
 	my @squares = $square ?? ($square,) !! square::{*};
 	my $before = self;
 
-	(state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
+	#(state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
 	my Move @ = gather {
 	    for @squares -> $from {
 		if !@!board[$from].defined || @!board[$from].color ~~ $them {
@@ -281,7 +284,7 @@ class Position {
 		}
 	    }
 	}.grep:
-	    !$legal || (%!kings{$us}:!exists) ?? * !! { ! .after!isKingAttacked($us) }
+	    !$legal || (%!kings{$us}:!exists) ?? * !! { ! .after.pass.isCheck }
     }
 
     method !attacked(color $color, square $square, Bool :$verbose) {
@@ -718,7 +721,11 @@ class Move {
 	$before
 	    .moves(:piece(inferPieceType($move)))
 	    .first({ my $san = .SAN; $san|strippedSan($san) eq $move })
-		or fail "move $move is not legal";
+		or do {
+		#note "fen={$before.fen}";
+		#note "inferedType={inferPieceType($move) // "unknown"}";
+		fail "move $move is not legal";
+	    }
     }
     method color returns color   { $!before.turn }
     method piece returns Piece:U { $!before!Position::board[$!from].WHAT }
@@ -787,7 +794,8 @@ class Move {
 	    :%castling-rights,
 	    :$en-passant,
 	    :$half-moves-count,
-	    :$move-number;
+	    :$move-number,
+	    :last-move(self);
     }
 
 
@@ -948,42 +956,35 @@ sub show(Position $pos) is export {
     }
 }
 
-our sub load-games(IO::Path $pgn) {
-    gather {
-	Chess::PGN.parse:
-	$pgn.slurp,
-	actions => class Game {
-	    has Pair @.tag-pair;
-	    has Move @.moves;
-	    has Str $.termination;
-	    method game($/) {
-		take self.bless:
-		    :tag-pair($<tag-pair-section>.made),
-		    :moves($<movetext-section>.made),
-		    :termination($<game-termination>.made)
-	    }
-	    method tag-pair-section($/) { make my Pair @ = $<tag-pair>».made; }
-	    method tag-pair($/) { make ~$<name> => ~$<value> }
-	    method movetext-section($/) {
-		my Position $position .= new;
-		make my Move @ = gather for $<move>»<SAN> {
-		    take my Move $move .= new: .Str, :$position;
-		    $position = $move.after;
-		}
-	    }
-	    method game-termination($/) { make ~$/ }
-	    method pgn {
-		join "\n",
-		@!tag-pair.map({ qq《[{.key} {.value}] 》}),
-		Q{},
-		join Q{ },
-		|(@!moves».SAN.rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
-		"$!termination\n"
-		;
-	    }
-	}
+class Game {
+    has Pair @.tag-pair;
+    has Position $.last-position;
+    has Str  $.termination;
+    method moves { { .last-move ?? (.last-move, |&?BLOCK(.last-move.before)) !! Empty }($!last-position).reverse; }
+    method pgn {
+	join "\n",
+	@!tag-pair.map({ qq《[{.key} {.value}] 》}),
+	Q{},
+	join Q{ },
+	|(self.moves».SAN.rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
+	"$!termination\n"
+	;
     }
 }
+
+our proto load-games($) {*}
+multi load-games(Match $/) {
+    # for some reason using an hyper here fails
+    #hyper for $<game> -> $/ {
+    #   Game.new:
+    gather for $<game> -> $/ {
+	take Game.new:
+	:tag-pair($<tag-pair-section><tag-pair>.map(-> $/ { ~$<name> => ~$<value> })),
+	:last-position([*] startpos, |$<movetext-section><move>»<SAN>».Str),
+	:termination(~$<game-termination>);
+    }
+}
+multi load-games(IO::Path $pgn) { samewith Chess::PGN.parse: $pgn.slurp }
 
 sub perft(UInt $depth, Position :$position = startpos) returns UInt is export {
   my $nodes = 0;
