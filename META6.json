@@ -6,7 +6,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.17.1",
+    "version" : "0.17.2",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
@@ -17,6 +17,7 @@
 	"Chess::Polyglot" : "lib/Chess/Polyglot.rakumod",
 	"Chess::Openings" : "lib/Chess/Openings.rakumod",
 	"Chess::JS"       : "lib/Chess/JS.rakumod",
+	"Chess::UCI"      : "lib/Chess/UCI.rakumod",
         "Chess"           : "lib/Chess.rakumod"
     },
     "resources" : [
