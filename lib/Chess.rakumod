@@ -368,9 +368,18 @@ class Position {
     method isCheckmate returns Bool {  self.isCheck && self.moves.elems == 0 }
     method isStalemate returns Bool { !self.isCheck && self.moves.elems == 0 }
 
-    method best-move(Str :$engine = 'stockfish', UInt :$time = 10, UInt :$threads = 15) {
+    proto method pick-move(|) {*}
+    multi method pick-move(Bool :$best! where !*) { samewith :engine<stockfish>, :time-out(3), :number-of-threads(1), :skill-level(10) }
+    multi method pick-move(Bool :$best! where ?*) { samewith :engine<stockfish>, :time-out(15), :number-of-threads(8), :skill-level(20) }
+    multi method pick-move(
+	Str :$engine!,
+	Real :$time-out!,
+	UInt :$number-of-threads!,
+	UInt :$skill-level! where 0..20
+    ) {
 	my Str $init-string;
-	$init-string ~= "setoption name Threads value $threads\n" if $engine eq 'stockfish';
+	$init-string ~= "setoption name Threads value $number-of-threads\n"  if $number-of-threads.defined;
+	$init-string ~= "setoption name Skill Level value $skill-level\n"    if $skill-level      .defined;
 	$init-string ~= [
 	    "position fen {self.fen}",
 	    "go infinite"
@@ -379,15 +388,15 @@ class Position {
 	my $process = Proc::Async.new: :w, $engine;
 	react {
 	    whenever $process.stdout.lines {
-		if /^'bestmove '([<[a..h]><[1..8]>]**2<[qnbr]>?)/ {
-		    whenever $process.say: "quit" {
-			$best-move = Chess::Move.new: ~$/[0], :position(self);
-		    }
+		use Chess::UCI;
+		if /^<Chess::UCI::best-move>/ {
+		    $best-move = Chess::Move.new: ~$<Chess::UCI::best-move>, :position(self);
+		    await $process.say: "quit";
 		}
 	    }
 	    whenever $process.start { done }
 	    whenever $process.say: $init-string {
-		whenever Promise.in($time) {
+		whenever Promise.in($time-out) {
 		    await $process.say: "stop";
 		}
 	    }
@@ -682,9 +691,7 @@ class Position {
 	if $!turn == white { $turn +^= RandomTurn[0] }
 
 	return my uint64 $ = $piece +^ $castle +^ $en-passant +^ $turn;
-
     }
-
 }
 
 class Move {
