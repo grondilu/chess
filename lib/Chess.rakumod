@@ -718,8 +718,10 @@ class Move {
 	my $from-rank = ($int +& 0b0_000_111_000_000_000) +> 9;
 	my $promotion = ($int +& 0b0_111_000_000_000_000) +> 12;
 
-	my ($from, $to) = map -> ($f, $r) { square::{['a'..'h'][$f] ~ (8 - $r)} }, ($from-file, $from-rank), ($to-file, $to-rank);
-	self.bless: :$from, :$to, :$promotion, :$before;
+	$promotion = ['', 'n', 'b', 'r', 'q'][$promotion];
+
+	my ($from, $to) = map -> ($f, $r) { square::{['a'..'h'][$f] ~ (1 + $r)} }, ($from-file, $from-rank), ($to-file, $to-rank);
+	$before.moves(:square($from)).first: { .LAN eq "$from$to$promotion" }
     }
     multi method new(Str $move where /^[<[a..h]><[1..8]>]**2<[qnbr]>?$/, Position :position($before) = startpos --> Move) {
 	$before.moves.first({ .LAN eq $move }) or fail "illegal move $move";
