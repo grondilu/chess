@@ -6,18 +6,19 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.17.3",
+    "version" : "0.18.0",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
     "depends" : [ ],
     "provides" : {
-        "Chess::FEN"      : "lib/Chess/FEN.rakumod",
-        "Chess::PGN"      : "lib/Chess/PGN.rakumod",
-	"Chess::Openings" : "lib/Chess/Openings.rakumod",
-	"Chess::JS"       : "lib/Chess/JS.rakumod",
-	"Chess::UCI"      : "lib/Chess/UCI.rakumod",
-        "Chess"           : "lib/Chess.rakumod"
+        "Chess"                   : "lib/Chess.rakumod",
+        "Chess::FEN"              : "lib/Chess/FEN.rakumod",
+        "Chess::PGN"              : "lib/Chess/PGN.rakumod",
+	"Chess::Openings"         : "lib/Chess/Openings.rakumod",
+	"Chess::JS"               : "lib/Chess/JS.rakumod",
+	"Chess::UCI"              : "lib/Chess/UCI.rakumod",
+	"Chess::Stockfish"        : "lib/Chess/Stockfish.rakumod"
     },
     "resources" : [
 	    "images/checkerboard.png",
