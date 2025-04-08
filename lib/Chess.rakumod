@@ -84,14 +84,14 @@ role Piece[Str $symbol, UInt $mask] {
 }
 
 class ActualPiece {}
-class Pawn   is ActualPiece does Piece['p',  1] is export {
+class Pawn   is ActualPiece does Piece['p',  1] {
     method offsets { (constant @ = 16, 32, 17, 15).map: * * ($.color == white ?? -1 !! +1) }
 }
-class Knight is ActualPiece does Piece['n',  2] is export { method offsets { constant @ = -18, -33, -31, -14, 18, 33, 31, 14 } }
-class Bishop is ActualPiece does Piece['b',  4] is export { method offsets { constant @ = -17, -15, 17, 15 }  }
-class Rook   is ActualPiece does Piece['r',  8] is export { method offsets { constant @ = -16, 1, 16, -1 } }
-class Queen  is ActualPiece does Piece['q', 16] is export { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
-class King   is ActualPiece does Piece['k', 32] is export { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
+class Knight is ActualPiece does Piece['n',  2] { method offsets { constant @ = -18, -33, -31, -14, 18, 33, 31, 14 } }
+class Bishop is ActualPiece does Piece['b',  4] { method offsets { constant @ = -17, -15, 17, 15 }  }
+class Rook   is ActualPiece does Piece['r',  8] { method offsets { constant @ = -16, 1, 16, -1 } }
+class Queen  is ActualPiece does Piece['q', 16] { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
+class King   is ActualPiece does Piece['k', 32] { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
 
 class Position {
     trusts Move;
