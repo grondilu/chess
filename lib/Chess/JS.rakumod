@@ -42,7 +42,6 @@ constant DEFAULT-POSITION = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq
 # emulate javascript's void 0??
 constant void0 = 0 but role { method defined { False } }
 
-constant EMPTY = -1;
 constant %FLAGS = 
   NORMAL       => 'n',
   CAPTURE      => 'c',
@@ -328,7 +327,7 @@ has @!board[128];
 has $!turn = WHITE;
 has %!header;
 has Square %!kings{Color};
-has $!epSquare = -1;
+has EnPassantSquare $!epSquare;
 has $!halfMoves = 0;
 has $!moveNumber = 0;
 has @!history;
@@ -341,7 +340,7 @@ method new($fen = DEFAULT-POSITION, % (:$skipValidation = False) = {}) {
   self.bless(:$fen, :$skipValidation);
 }
 submethod TWEAK(:$fen, :$skipValidation) {
-  self.load: my $ = $fen, { :$skipValidation };
+  self.load: $fen, { :$skipValidation };
 }
 
 method clear( % (:$preserveHeaders = False) = {}) {
@@ -349,7 +348,7 @@ method clear( % (:$preserveHeaders = False) = {}) {
   %!kings{$_}:delete for %!kings.keys;
   $!turn = WHITE;
   %!castling = (WHITE) => 0, (BLACK) => 0;
-  $!epSquare = EMPTY;
+  $!epSquare = EnPassantSquare;
   $!halfMoves = 0;
   $!moveNumber = 1;
   @!history = [];
@@ -393,7 +392,7 @@ method load($fen, % (:$skipValidation = False, :$preserveHeaders = True) = {}) {
     when /k/ { %!castling{BLACK} +|= %BITS<KSIDE_CASTLE>; proceed }
     when /q/ { %!castling{BLACK} +|= %BITS<QSIDE_CASTLE>;         }
   }
-  $!epSquare = @tokens[3] eq '-' ?? EMPTY !! %Ox88{@tokens[3]};
+  $!epSquare = @tokens[3] eq '-' ?? EnPassantSquare !! %Ox88{@tokens[3]};
   $!halfMoves = @tokens[4].Int;
   $!moveNumber = @tokens[5].Int;
   self!updateSetup($fen);
@@ -440,7 +439,7 @@ method fen {
   }
   $castling ||= '-';
   my $epSquare = '-';
-  if $!epSquare !== EMPTY {
+  if $!epSquare.defined {
     my \bigPawnSquare = $!epSquare + ($!turn eq WHITE ?? +16 !! -16);
     my \squares = [bigPawnSquare + 1, bigPawnSquare - 1];
     for squares -> \square {
@@ -557,19 +556,19 @@ method !updateCastlingRights {
   }
 }
 method !updateEnPassantSquare {
-  if $!epSquare == EMPTY {
+  unless $!epSquare.defined {
     return
   }
   my \startSquare = $!epSquare + ($!turn eq WHITE ?? -16 !! 16);
   my \currentSquare = $!epSquare + ($!turn eq WHITE ?? -16 !! 16);
   my \attackers = [currentSquare + 1, currentSquare - 1];
   if @!board[startSquare] || @!board[$!epSquare] || @!board[currentSquare]<color> ne swapColor($!turn) || @!board[currentSquare]<type>  ne PAWN {
-    $!epSquare = EMPTY;
+    $!epSquare = EnPassantSquare;
     return;
   }
   my \canCapture = -> \square { !(square +& 136) && @!board[square]<color> eq $!turn && @!board[square]<type> eq PAWN };
   if attackers.grep(canCapture) {
-    $!epSquare = EMPTY
+    $!epSquare = EnPassantSquare
   }
 }
 method !attacked(\color, \square, Bool :$verbose) {
@@ -769,7 +768,7 @@ method !moves(% (Bool :$legal = True, :$piece, :$square) = {}) {
 
 	if (@!board[$to]<color> // '') eq $them {
 	  addMove(@moves, $us, $from, $to, PAWN, @!board[$to]<type>, %BITS<CAPTURE>);
-	} elsif $to == $!epSquare {
+	} elsif $!epSquare.defined && $to == $!epSquare {
 	  addMove(@moves, $us, $from, $to, PAWN, PAWN, %BITS<EP_CAPTURE>);
 	}
       }
@@ -920,7 +919,7 @@ method !makeMove($move) {
       $!epSquare = $move<to> + 16;
     }
   } else {
-    $!epSquare = EMPTY
+    $!epSquare = EnPassantSquare
   }
   if $move<piece> eq PAWN {
     $!halfMoves = 0;
