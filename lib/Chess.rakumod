@@ -977,19 +977,36 @@ class Game {
     }
 }
 
-our proto load-games($) {*}
+our proto load-games($) returns Array[Game] {*}
 multi load-games(Match $/) {
     # for some reason using an hyper here fails
     #hyper for $<game> -> $/ {
     #   Game.new:
-    gather for $<game> -> $/ {
+    Array[Game].new: gather for $<game> -> $/ {
 	take Game.new:
 	:tag-pair($<tag-pair-section><tag-pair>.map(-> $/ { ~$<name> => ~$<value> })),
 	:last-position([*] startpos, |$<movetext-section><move>»<SAN>».Str),
 	:termination(~$<game-termination>);
     }
 }
-multi load-games(IO::Path $pgn) { samewith Chess::PGN.parse: $pgn.slurp }
+multi load-games(IO::Path $pgn) { samewith $pgn.slurp }
+multi load-games(Str $pgn) { samewith Chess::PGN.parse: $pgn }
+
+our proto make-book($) returns Blob {*}
+multi make-book($data) {
+    [~] gather for load-games($data) {
+	take .before.uint => .uint for .moves
+    }.sort(*.key)
+    .map: {
+	my Buf $buf .= new;
+	$buf.write-uint64( 0,   .key, BigEndian);
+	$buf.write-uint16( 8, .value, BigEndian);
+	$buf.write-uint16(10,      1, BigEndian);  # default weight of 1
+	$buf.write-uint32(12,      0, BigEndian);  # default learn value of 0
+	$buf;
+    }
+}
+
 
 sub perft(UInt $depth, Position :$position = startpos) returns UInt is export {
   my $nodes = 0;
