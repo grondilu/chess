@@ -83,7 +83,7 @@ On most terminals, the code above would produce an ascii diagram, as seen in the
 On kitty(see below), it will show a nice diagram inside the terminal (notice
 that it flips the board when it's Black's turn) :
 
-![Ruy Lopez position]https://i.imgur.com/KBXgO7U.png
+![Ruy Lopez position](https://i.imgur.com/KBXgO7U.png)
 
 This requires :
 
