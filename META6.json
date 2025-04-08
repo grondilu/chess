@@ -6,11 +6,13 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.19.6",
+    "version" : "0.19.7",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
-    "depends" : [ ],
+    "depends" : [ 
+	    "URI::Encode"
+    ],
     "provides" : {
         "Chess"                   : "lib/Chess.rakumod",
         "Chess::FEN"              : "lib/Chess/FEN.rakumod",
