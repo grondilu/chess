@@ -6,39 +6,52 @@ Chess-related stuff in Raku
 
 ```
 $ raku -MChess
-> use Chess;
-
 > say startpos;                       
 rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-> show startpos;  # see further for kitty terminal
+> say startpos * 'e4'; # position after 1.e4
+rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
+> show startpos * 'd4';  # see further for kitty terminal
    +------------------------+
  8 | r  n  b  q  k  b  n  r |
  7 | p  p  p  p  p  p  p  p |
  6 | .  .  .  .  .  .  .  . |
  5 | .  .  .  .  .  .  .  . |
- 4 | .  .  .  .  .  .  .  . |
+ 4 | .  .  .  P  .  .  .  . |
  3 | .  .  .  .  .  .  .  . |
- 2 | P  P  P  P  P  P  P  P |
+ 2 | P  P  P  .  P  P  P  P |
  1 | R  N  B  Q  K  B  N  R |
    +------------------------+
-> show q{r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3}
-   +------------------------+
- 8 | r  .  b  q  k  b  n  r |
- 7 | p  p  p  p  .  p  p  p |
- 6 | .  .  n  .  .  .  .  . |
- 5 | .  B  .  .  p  .  .  . |
- 4 | .  .  .  .  P  .  .  . |
- 3 | .  .  .  .  .  N  .  . |
- 2 | P  P  P  P  .  P  P  P |
- 1 | R  N  B  Q  K  .  .  R |
-   +------------------------+
-     a  b  c  d  e  f  g  h
-> say Chess::Position.new: <f4 e5 g4>;   # building a position from a list of moves
-rnbqkbnr/pppp1ppp/8/4p3/5PP1/8/PPPPP2P/RNBQKBNR b KQkq - 0 2
 > say legal-moves startpos;
 [d3 d4 e3 e4 c3 c4 f3 f4 Nf3 Nh3 h3 h4 a3 a4 g3 g4 Na3 Nc3 b3 b4]
  ```
+## Description
 
+### Exported symbols
+
+The library exports a black/white enumeration for colors,
+either for squares or for pieces:
+
+```raku
+say white;
+say black;
+```
+
+An enumeration for all the squares of the chessboard is also exported :
+
+```raku
+.say for e4, e5, g8
+```
+
+There is a term called `startpos` which returns an instance of the `Chess::Position` class representing
+the starting position.  See synopsis above.
+
+The multiplication operator is overloaded to apply a move to a position. The position must be on the left
+side, and the move on the right side, as show on the synopsis.  For this to work the move must be a string
+in SAN notation.  Hopefully this is quite intuitive.
+
+The crux of any chess library or engine is to generate all possible moves from any given position.  This is done
+in this library either with an exported subroutine `legal-moves`, as seen in the synopsis, or with the `moves` method
+of the `Chess::Position` class.
 
 ## PGN Grammar
 
@@ -62,14 +75,15 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 ```raku
 use Chess;
-show startpos;
+show [*] startpos, <e4 e5 Nf3 Nc6>;
 ```
 
 On most terminals, the code above would produce an ascii diagram, as seen in the synopsis.
 
-On kitty(see below), it will show a nice diagram inside the terminal:
+On kitty(see below), it will show a nice diagram inside the terminal (notice
+that it flips the board when it's Black's turn) :
 
-![Hopefully the code above should produce a nice representation of the starting position](https://i.imgur.com/6CIyr3G.png)
+![Ruy Lopez position]https://i.imgur.com/KBXgO7U.png
 
 This requires :
 
@@ -78,6 +92,13 @@ This requires :
   - ~~`wget`~~
   - [ImageMagick](https://imagemagick.org/script/command-line-tools.php)
   - GNU's *coreutils* (for `basenc`)
+
+### Polyglot books
+
+The subroutine `Chess::make-book` takes PGN data, either as a string or an `IO::Path` object,
+and produces a Blob that can then be spurt into a [polyglot book](https://www.chessprogramming.org/PolyGlot).
+
+The class `Chess::Book` can be used to read such books.
 
 ## LINKS
 
