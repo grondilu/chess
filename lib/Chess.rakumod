@@ -197,8 +197,8 @@ class Position {
 	my @squares = $square ?? ($square,) !! square::{*};
 	my $before = self;
 
-	(state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
-	my Move @ = gather {
+	slip (state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
+	gather {
 	    for @squares -> $from {
 		if !@!board[$from].defined || @!board[$from].color ~~ $them {
 		    next;
@@ -706,9 +706,9 @@ class Move {
     method uint {
 	# http://hgm.nubati.net/book_format.html
 	reduce 8 * * + *,
-	rank($!from),
+	7-rank($!from),
 	file($!from),
-	rank($!to),
+	7-rank($!to),
 	file($!to)
     }
     multi method new(UInt $int, Position :position($before) = startpos) {
@@ -824,7 +824,7 @@ class Move {
     sub strippedSan(Str $move) {
 	$move.subst(/[<[+#]><[?!]>*]/, "");
     }
-    sub getDisambiguator(Move $move, Move @moves) {
+    sub getDisambiguator(Move $move, *@moves) {
 	my square ($from, $to) = $move.from, $move.to;
 	my Piece $piece = $move.piece;
 	my UInt ($ambiguities, $sameRank, $sameFile) = 0 xx 3;

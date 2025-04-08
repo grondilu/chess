@@ -7,8 +7,8 @@ use Chess::PGN;
 use Test;
 
 subtest "masters' games", {
-  for <Morphy Capablanca Fischer Karpov Kasparov> {
-    ok Chess::PGN.parse(qq{resources/$_.pgn}.IO.slurp), $_;
+  for <Morphy Capablanca Fischer Petrosian Karpov Kasparov> {
+    ok Chess::PGN.parse(qq{resources/masters/$_.pgn}.IO.slurp), $_;
   }
 }
 

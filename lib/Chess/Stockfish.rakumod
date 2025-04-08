@@ -5,9 +5,7 @@ has Supply $!lines;
 
 multi method new { samewith 'stockfish', :w }
 
-submethod BUILD {
-	$!lines = self.stdout.lines;
-}
+submethod BUILD { $!lines = self.stdout.lines; }
 submethod TWEAK {
 	start react {
 		whenever $!lines { .note if /^info/; }

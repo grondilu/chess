@@ -79,6 +79,10 @@ This requires :
   - [ImageMagick](https://imagemagick.org/script/command-line-tools.php)
   - GNU's *coreutils* (for `basenc`)
 
+## LINKS
+
+ - [Human.bin](https://digilander.libero.it/taioscacchi/programmi/saros-page.html)
+
 ## TODO
 
  - [x] implement rules of the game

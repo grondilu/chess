@@ -64,4 +64,4 @@ for startpos.moves -> $move {
 
 done-testing;
 
-# vi: ft=raku
+# vi: ft=raku nu
