@@ -730,11 +730,7 @@ class Move {
 	$before
 	    .moves(:piece(inferPieceType($move)))
 	    .first({ my $san = .SAN; $san|strippedSan($san) eq $move })
-		or do {
-		#note "fen={$before.fen}";
-		#note "inferedType={inferPieceType($move) // "unknown"}";
-		fail "move $move is not legal";
-	    }
+		or fail "move $move is not legal";
     }
     method color returns color   { $!before.turn }
     method piece returns Piece:U { $!before!Position::board[$!from].WHAT }
