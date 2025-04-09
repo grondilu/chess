@@ -6,12 +6,13 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.19.8",
+    "version" : "0.19.9",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
     "depends" : [ 
-	    "URI::Encode"
+	    "URI::Encode",
+	    "Base64"
     ],
     "provides" : {
         "Chess"                   : "lib/Chess.rakumod",
