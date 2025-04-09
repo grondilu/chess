@@ -50,6 +50,9 @@ our sub file(square $sq) { $sq +& 15 }
 constant %SECOND-RANK = (white) => rank(a2), (black) => rank(a7);
 constant PROMOTION-RANK = rank(a1)|rank(a8);
 
+# https://www.w3.org/TR/png/#3PNGsignature
+constant PNG-SIGNATURE = Blob.new: 137, 80, 78, 71, 13, 10, 26, 10;
+
 subset SAN of Str is export where /^<Chess::PGN::SAN>$/;
 
 multi infix:<*>(Position $position, SAN $move --> Position) is export { Move.new($move, :$position).after }
@@ -957,7 +960,7 @@ multi show(Position $pos) {
     if %*ENV<TERM> eq 'xterm-kitty' { samewith $pos.png }
     else { say $pos }
 }
-multi show(Blob $blob where $blob.subbuf(0, 8) ~~ Blob.new(137, 80, 78, 71, 13, 10, 26, 10)) {
+multi show(Blob $blob where $blob.subbuf(0, 8) ~~ PNG-SIGNATURE) {
     use Base64;
     my @payload = encode-base64($blob).rotor(4096, :partial).map(*.join);
     say @payload > 1 ??
