@@ -8,6 +8,7 @@ our sub APC($payload, *%control-data) {
 	.map(*.join);
     "\e_G" ~
     %control-data.map({"{.key}={.value}"}).join(',') ~
+    ',m=' ~ (@payload > 1 ?? 1 !! 0) ~
     ';' ~
     (
 	@payload > 1 ??

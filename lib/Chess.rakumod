@@ -234,12 +234,6 @@ class Position {
 
     method test {
 
-	use Base64;
-	say encode-base64(%?RESOURCES<images/green.png>.slurp(:bin))
-	    .rotor(4096, :partial)
-	    .map(*.join);
-
-	return;
 
     }
     method input-moves {
@@ -1074,8 +1068,7 @@ multi show(Blob $blob where $blob.subbuf(0, 8) ~~ PNG-SIGNATURE) {
 	$blob,
 	a => 'T',
 	f => 100,
-	t => 'd',
-	m => 1
+	t => 'd'
     ;
 }
 
