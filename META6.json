@@ -6,7 +6,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.20.0",
+    "version" : "0.20.1",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
@@ -22,7 +22,8 @@
 	"Chess::JS"               : "lib/Chess/JS.rakumod",
 	"Chess::UCI"              : "lib/Chess/UCI.rakumod",
 	"Chess::Stockfish"        : "lib/Chess/Stockfish.rakumod",
-	"Chess::Book"             : "lib/Chess/Book.rakumod"
+	"Chess::Book"             : "lib/Chess/Book.rakumod",
+	"Kitty"                   : "lib/Kitty.rakumod"
     },
     "resources" : [
 	    "images/checkerboard.png",

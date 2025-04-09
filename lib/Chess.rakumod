@@ -232,6 +232,16 @@ class Position {
 
     }
 
+    method test {
+
+	use Base64;
+	say encode-base64(%?RESOURCES<images/green.png>.slurp(:bin))
+	    .rotor(4096, :partial)
+	    .map(*.join);
+
+	return;
+
+    }
     method input-moves {
 	ENTER my $saved-termios := Term::termios.new(fd => 1).getattr;
 	LEAVE $saved-termios.setattr: :DRAIN;
@@ -265,13 +275,16 @@ class Position {
 	ENTER {
 	    print "\e[?1016h"; # Enable SGR mode for better precision
 	    print "\e[?1002h"; # Enable button-event tracking (press/release)
+	    print "\e[?1003h";
 	}
 	LEAVE {
+	    print "\e[?1003l";
 	    print "\e[?1002l";
 	    print "\e[?1016l";
 	}
 
 	show self;
+
 
 	my $mouse-reporting = supply {
 	    loop {
@@ -304,11 +317,13 @@ class Position {
 		    my ($x, $y) = .map: * div $square-size;
 		    my ($r, $c) = 7 - $y, $x;
 		    if $r & $c ~~ ^8 {
+			# hand-shaped pointer
+			printf "\e]22;hand\a";
 			my $square = square::{ ('a'..'h')[$c] ~ ($r + 1) };
 			if @!board[$square].defined {
 			    print "\r$square ({.[2]}) {@!board[$square]}";
-			} else { print  "\e[2K"; }
-		    }
+			} else { print  "\e]22;not-allowed\a\e[2K"; }
+		    } else { printf "\e]22;default\a"; }
 		}
 		when Str {
 		    print "\rgot message `$_`";
@@ -1054,14 +1069,14 @@ multi show(Position $pos) {
     else { say $pos }
 }
 multi show(Blob $blob where $blob.subbuf(0, 8) ~~ PNG-SIGNATURE) {
-    use Base64;
-    my @payload = encode-base64($blob).rotor(4096, :partial).map(*.join);
-    say @payload > 1 ??
-    [
-	"\e_Ga=T,f=100,t=d,m=1;" ~ @payload.head ~ "\e\\",
-	|@payload.tail(*-1).head(*-1).map({"\e_Gm=1;$_\e\\"}),
-	"\e_Gm=0;" ~ @payload.tail ~ "\e\\"
-    ].join !! "\e_a=T,f=100,t=d;" ~ @payload.pick ~ "\e\\"
+    use Kitty;
+    say Kitty::APC
+	$blob,
+	a => 'T',
+	f => 100,
+	t => 'd',
+	m => 1
+    ;
 }
 
 class Game {
