@@ -192,6 +192,37 @@ class Position {
 	$!move-number
     }
 
+    method png returns Blob {
+	constant $square-size = 60;
+
+	(state %){self.uint.base(36)} //= .out.slurp given shell gather {
+	    sub encode(Distribution::Resource $resource --> Str) {
+		use Base64;
+		encode-base64($resource.slurp(:bin, :close)).join
+	    }
+	    my Bool $flip-board = self.turn ~~ black;
+	    my $checkboard = encode %?RESOURCES<images/checkerboard.png>;
+	    my %pieces = <K Q R B N P k q r b n p>.map: { $_ => encode(%?RESOURCES{"images/$_.png"}) };
+
+	    take qq{magick <(basenc -d --base64 <<<"$checkboard") png:-};
+	    my ($r, $c) = 0, 0;
+	    for self.board -> @rank {
+		for @rank {
+		    if .defined {
+			my ($R, $C) = ($r, $c).map: { $square-size * ($flip-board ?? 7 - $_ !! $_) }
+			take qq{composite -geometry +$C+$R <(basenc -d --base64 <<<"%pieces{.value.symbol}") - png:-};
+		    }
+		    $c++;
+		}
+		$c = 0;
+		$r++;
+	    }
+	}.join(" |\n"),
+	:out, :bin
+	;
+
+    }
+
     method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 	my ($us, $them) = $!turn, ¬$!turn;
 	my @squares = $square ?? ($square,) !! square::{*};
@@ -923,33 +954,8 @@ multi legal-moves(Str $fen where { Chess::FEN.parse: $_ }) is export {
 
 sub show(Position $pos) is export {
     if %*ENV<TERM> eq 'xterm-kitty' {
-	constant $square-size = 60;
-
-	my $shell-command = gather {
-	    sub encode(Distribution::Resource $resource --> Str) {
-		use Base64;
-		encode-base64($resource.slurp(:bin, :close)).join
-	    }
-	    my Bool $flip-board = $pos.turn ~~ black;
-	    my $checkboard = encode %?RESOURCES<images/checkerboard.png>;
-	    my %pieces = <K Q R B N P k q r b n p>.map: { $_ => encode(%?RESOURCES{"images/$_.png"}) };
-
-	    take qq{magick <(basenc -d --base64 <<<"$checkboard") png:-};
-	    my ($r, $c) = 0, 0;
-	    for $pos.board -> @rank {
-		for @rank {
-		    if .defined {
-			my ($R, $C) = ($r, $c).map: { $square-size * ($flip-board ?? 7 - $_ !! $_) }
-			take qq{composite -geometry +$C+$R <(basenc -d --base64 <<<"%pieces{.value.symbol}") - png:-};
-		    }
-		    $c++;
-		}
-		$c = 0;
-		$r++;
-	    }
-	    take "basenc --base64 -w4096"
-	}.join(" |\n");
-	my @payload = qqx[$shell-command].lines;
+	use Base64;
+	my @payload = encode-base64($pos.png).rotor(4096, :partial).map(*.join);
 	say @payload > 1 ??
 	[
 	    "\e_Ga=T,f=100,t=d,m=1;" ~ @payload.head ~ "\e\\",
