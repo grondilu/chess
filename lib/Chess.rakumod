@@ -952,19 +952,20 @@ multi legal-moves(Str $fen where { Chess::FEN.parse: $_ }) is export {
     Chess::Position.new($fen).moves
 }
 
-sub show(Position $pos) is export {
-    if %*ENV<TERM> eq 'xterm-kitty' {
-	use Base64;
-	my @payload = encode-base64($pos.png).rotor(4096, :partial).map(*.join);
-	say @payload > 1 ??
-	[
-	    "\e_Ga=T,f=100,t=d,m=1;" ~ @payload.head ~ "\e\\",
-	    |@payload.tail(*-1).head(*-1).map({"\e_Gm=1;$_\e\\"}),
-	    "\e_Gm=0;" ~ @payload.tail ~ "\e\\"
-	].join !! "\e_a=T,f=100,t=d;" ~ @payload.pick ~ "\e\\"
-    } else {
-	say $pos.ascii
-    }
+proto show($) is export {*}
+multi show(Position $pos) {
+    if %*ENV<TERM> eq 'xterm-kitty' { samewith $pos.png }
+    else { say $pos }
+}
+multi show(Blob $blob where $blob.subbuf(0, 8) ~~ Blob.new(137, 80, 78, 71, 13, 10, 26, 10)) {
+    use Base64;
+    my @payload = encode-base64($blob).rotor(4096, :partial).map(*.join);
+    say @payload > 1 ??
+    [
+	"\e_Ga=T,f=100,t=d,m=1;" ~ @payload.head ~ "\e\\",
+	|@payload.tail(*-1).head(*-1).map({"\e_Gm=1;$_\e\\"}),
+	"\e_Gm=0;" ~ @payload.tail ~ "\e\\"
+    ].join !! "\e_a=T,f=100,t=d;" ~ @payload.pick ~ "\e\\"
 }
 
 class Game {
