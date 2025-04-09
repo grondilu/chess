@@ -28,6 +28,8 @@ POSSIBILITY OF SUCH DAMAGE.
 use Chess::PGN;
 use Chess::FEN;
 
+use Term::termios;
+
 class Move     {...}
 class PawnMove {...}
 class BigPawnMove {...}
@@ -52,6 +54,8 @@ constant PROMOTION-RANK = rank(a1)|rank(a8);
 
 # https://www.w3.org/TR/png/#3PNGsignature
 constant PNG-SIGNATURE = Blob.new: 137, 80, 78, 71, 13, 10, 26, 10;
+
+constant $square-size = 80;
 
 subset SAN of Str is export where /^<Chess::PGN::SAN>$/;
 
@@ -196,7 +200,6 @@ class Position {
     }
 
     method png returns Blob {
-	constant $square-size = 60;
 
 	(state %){self.uint.base(36)} //= .out.slurp given shell gather {
 	    sub encode(Distribution::Resource $resource --> Str) {
@@ -204,26 +207,116 @@ class Position {
 		encode-base64($resource.slurp(:bin, :close)).join
 	    }
 	    my Bool $flip-board = self.turn ~~ black;
+	    # default checkerboard has 60x60 squares
 	    my $checkboard = encode %?RESOURCES<images/checkerboard.png>;
 	    my %pieces = <K Q R B N P k q r b n p>.map: { $_ => encode(%?RESOURCES{"images/$_.png"}) };
 
-	    take qq{magick <(basenc -d --base64 <<<"$checkboard") png:-};
+	    take qq[magick <(basenc -d --base64 <<<"$checkboard") png:-];
 	    my ($r, $c) = 0, 0;
 	    for self.board -> @rank {
 		for @rank {
 		    if .defined {
-			my ($R, $C) = ($r, $c).map: { $square-size * ($flip-board ?? 7 - $_ !! $_) }
-			take qq{composite -geometry +$C+$R <(basenc -d --base64 <<<"%pieces{.value.symbol}") - png:-};
+			my ($R, $C) = ($r, $c).map: { 60 * ($flip-board ?? 7 - $_ !! $_) }
+			$C--; # It just looks better with this. Don't ask my why!
+			take qq[composite -geometry +$C+$R <(basenc -d --base64 <<<"%pieces{.value.symbol}") - png:-];
 		    }
 		    $c++;
 		}
 		$c = 0;
 		$r++;
 	    }
+	    take qq[magick - -resize {join 'x', (8*$square-size) xx 2} png:-];
 	}.join(" |\n"),
 	:out, :bin
 	;
 
+    }
+
+    method input-moves {
+	ENTER my $saved-termios := Term::termios.new(fd => 1).getattr;
+	LEAVE $saved-termios.setattr: :DRAIN;
+
+	ENTER {
+	    my $termios := Term::termios.new(fd => 1).getattr;
+	    $termios.makeraw;
+	    $termios.setattr: :DRAIN;
+	}
+
+	ENTER {
+	    print join '',
+	    # save state
+	    "\e7",
+	    # save the screen and erase it
+	    "\e[?47h\e[2J",
+	    # make cursor invisible
+	    "\e[?25l"
+	}
+	LEAVE {
+	    print join '',
+	    # make cursor visible
+	    "\e[?25h",
+	    # restore the screen
+	    "\e[?47l",
+	    # restore state
+	    "\e8"
+	    ;
+	}
+
+	ENTER {
+	    print "\e[?1016h"; # Enable SGR mode for better precision
+	    print "\e[?1002h"; # Enable button-event tracking (press/release)
+	}
+	LEAVE {
+	    print "\e[?1002l";
+	    print "\e[?1016l";
+	}
+
+	show self;
+
+	my $mouse-reporting = supply {
+	    loop {
+		my Buf $buf .= new;
+		repeat {
+		    given $*IN.read(1) {
+			if .head == qq[\e].ord {
+			    my Buf $csi .= new;
+			    loop {
+				my $r = $*IN.read(1);
+				$csi.push: $r;
+				last if $r.head == <M m>».ord.any;
+			    }
+			    if $csi.decode ~~ / \[ <[<>]> [\d+]\; (\d+)+ % ';' <m=[mM]>/ {
+				emit [ |$0».Int, $<m>  ];
+			    } else { emit "unreckognized csi {$csi.decode}" }
+			} else { $buf.push($_) }
+		    }
+		} until try my $c = $buf.decode;
+		emit $c;
+		last if $c eq 'q';
+	    }
+	};
+
+	constant $time-out = 5;
+	# display the position
+	react {
+	    whenever $mouse-reporting {
+		when Array {
+		    my ($x, $y) = .map: * div $square-size;
+		    my ($r, $c) = 7 - $y, $x;
+		    if $r & $c ~~ ^8 {
+			my $square = square::{ ('a'..'h')[$c] ~ ($r + 1) };
+			if @!board[$square].defined {
+			    print "\r$square ({.[2]}) {@!board[$square]}";
+			} else { print  "\e[2K"; }
+		    }
+		}
+		when Str {
+		    print "\rgot message `$_`";
+		}
+	    }
+	    # can't make the line below work for some reason
+	    #whenever Promise.in($time-out) { done }
+	}
     }
 
     method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
