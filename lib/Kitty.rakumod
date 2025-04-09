@@ -1,5 +1,20 @@
 unit module Kitty;
 
+our constant %ID = <checkerboard green p P b B n N r R q Q k K> Z=> 100..*;
+
+our sub transmit-data {
+    return unless (state $)++;
+    for %ID {
+	print APC
+	%?RESOURCES{"images/{.key}.png"}.slurp(:bin),
+	a => 't',
+	f => 100,
+	t => 'd',
+	i => .value
+	;
+    }
+}
+
 our sub APC($payload, *%control-data) {
     use Base64;
 
