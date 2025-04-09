@@ -28,7 +28,9 @@ POSSIBILITY OF SUCH DAMAGE.
 use Chess::PGN;
 use Chess::FEN;
 
+use Kitty;
 use Term::termios;
+use Terminal::Size;
 
 class Move     {...}
 class PawnMove {...}
@@ -55,7 +57,7 @@ constant PROMOTION-RANK = rank(a1)|rank(a8);
 # https://www.w3.org/TR/png/#3PNGsignature
 constant PNG-SIGNATURE = Blob.new: 137, 80, 78, 71, 13, 10, 26, 10;
 
-constant $square-size = 80;
+constant $square-size = 60;
 
 subset SAN of Str is export where /^<Chess::PGN::SAN>$/;
 
@@ -828,6 +830,42 @@ class Position {
 
 	return my uint64 $ = $piece +^ $castle +^ $en-passant +^ $turn;
     }
+    method show {
+	Kitty::transmit-data;
+
+	constant $checkerboard-placement-id = 2000;
+
+	my ($rows, $columns) = .rows, .cols given terminal-size;
+	my ($window-height, $window-width) = Kitty::get-window-size;
+	my ($cell-width, $cell-height) = $window-width div $columns, $window-height div $rows;
+
+	say Kitty::APC
+	a => 'p',
+	i => %Kitty::ID<checkerboard>,
+	p => $checkerboard-placement-id,
+	q => 1;
+
+	for square::{*} -> $square {
+	    with @!board[$square] -> $piece {
+		my ($rank, $file) = rank($square), file($square);
+		print Kitty::APC
+		a => 'p',
+		i => %Kitty::ID{$piece.symbol},
+		p => $checkerboard-placement-id + 8*$rank + $file + 1,
+		P => %Kitty::ID<checkerboard>,
+		Q => $checkerboard-placement-id,
+		H => ($file*$square-size) div $cell-width,
+		X => ($file*$square-size) mod $cell-width,
+		V => ($rank*$square-size) div $cell-height,
+		Y => ($rank*$square-size) mod $cell-height,
+		z => 10,
+		q => 1,
+		C => 1;
+	    }
+	}
+
+
+    }
 }
 
 class Move {
@@ -1065,11 +1103,10 @@ multi show(Position $pos) {
 multi show(Blob $blob where $blob.subbuf(0, 8) ~~ PNG-SIGNATURE) {
     use Kitty;
     say Kitty::APC
-	$blob,
-	a => 'T',
-	f => 100,
-	t => 'd'
-    ;
+    $blob,
+    a => 'T',
+    f => 100,
+    t => 'd'
 }
 
 class Game {
