@@ -7,29 +7,6 @@ our sub pick-placement-id returns UInt {
     # https://sw.kovidgoyal.net/kitty/graphics-protocol/#display-images-on-screen
     (1..4294967295).pick
 }
-our sub get-window-size {
-    ENTER my $saved_termios := Term::termios.new(fd => 1).getattr;
-    LEAVE $saved_termios.setattr: :DRAIN;
-    my $termios := Term::termios.new(fd => 1).getattr;
-    $termios.makeraw;
-
-    $termios.setattr(:DRAIN);
-
-    print "\e[14t";
-
-    if $*IN.read(4) ~~ Blob.new: "\e[4;".comb(/./)».ord {
-	my Buf $buf .= new;
-	loop {
-	    my $c = $*IN.read(1);
-	    $buf ~= $c;
-	    last if $c[0] ~~ 't'.ord;
-	}
-	if $buf.decode ~~ / (\d+) ** 2 % \; / {
-	    return $0».Int;
-	} else { fail "unexpected response from stdin" }
-    } else { fail "could not read stdin" }
-
-}
 
 our sub transmit-data {
     once for %ID {

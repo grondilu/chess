@@ -27,6 +27,7 @@ POSSIBILITY OF SUCH DAMAGE.
 }}}
 use Chess::PGN;
 use Chess::FEN;
+use Chess::Graphics;
 
 use Kitty;
 use Term::termios;
@@ -851,7 +852,7 @@ class Position {
 	my $checkerboard-placement-id = Kitty::pick-placement-id;
 
 	my ($rows, $columns) = .rows, .cols given terminal-size;
-	my ($window-height, $window-width) = Kitty::get-window-size;
+	my ($window-height, $window-width) = Chess::Graphics::get-window-size;
 	my ($cell-width, $cell-height) = $window-width div $columns, $window-height div $rows;
 
 	say Kitty::APC
