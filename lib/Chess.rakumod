@@ -31,7 +31,6 @@ use Chess::Graphics;
 
 use Kitty;
 use Term::termios;
-use Terminal::Size;
 
 class Move     {...}
 class PawnMove {...}
@@ -254,28 +253,22 @@ class Position {
 	# =item L<XTerm control sequences|https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
 	ENTER {
 	    print join '',
-	    # save state
-	    "\e7",
-	    # save the screen and erase it
-	    "\e[?47h\e[2J",
-	    # make cursor invisible
-	    "\e[?25l"
+	    "\e7",                # save state
+	    "\e[?47h\e[2J",       # save the screen and erase it
+	    "\e[?25l"             # make cursor invisible
 	}
 	LEAVE {
 	    print join '',
-	    # make cursor visible
-	    "\e[?25h",
-	    # restore the screen
-	    "\e[?47l",
-	    # restore state
-	    "\e8"
+	    "\e[?25h",           # make cursor visible
+	    "\e[?47l",           # restore the screen
+	    "\e8"                # restore state
 	    ;
 	}
 
 	ENTER {
 	    print "\e[?1016h"; # Enable SGR mode for better precision
 	    print "\e[?1002h"; # Enable button-event tracking (press/release)
-	    print "\e[?1003h";
+	    print "\e[?1003h"; # Enable all mouse events (motion)
 	}
 	LEAVE {
 	    print "\e[?1003l";
@@ -283,11 +276,17 @@ class Position {
 	    print "\e[?1016l";
 	}
 
+	# display the position
 	show self;
 
 	class Mouse {
-	    class Button { has Bool $.is-pressed; }
+	    class Button {
+		has Bool $.is-pressed handles <Bool>;
+		method press   { $!is-pressed = True }
+		method release { $!is-pressed = False }
+	    }
 	    has Button ($.left, $.right);
+	    submethod BUILD { $!left.=new; $!right.=new }
 	    class Event {
 		has UInt(Cool) ($.x, $.y); 
 		method isInsideChessboard returns Bool { $!x&$!y ~~ 0..(8*$square-size) }
@@ -296,7 +295,10 @@ class Position {
 	    class Release is Event { }
 	    class Move    is Event { }
 	}
-	my $mouse-reporting = supply {
+
+	my Mouse $mouse .= new;
+
+	my $mouse-and-keyboard-reporting = supply {
 	    loop {
 		my Buf $buf .= new;
 		repeat {
@@ -311,7 +313,15 @@ class Position {
 			    if $csi.decode ~~ / \[ <[<>]> [$<private-code> =\d+]\; [$<x> = \d+] \; [$<y> = \d+] <m=[mM]>/ {
 				given $<private-code> {
 				    when 35 { emit Mouse::Move.new:  :$<x>, :$<y> }
-				    when  0 { emit ($<m> eq 'M' ?? Mouse::Click !! Mouse::Release).new: :$<x>, :$<y> }
+				    when  0 {
+					if $<m> eq 'M' {
+					    $mouse.left.press;
+					    emit Mouse::Click.new: :$<x>, :$<y>;
+					} else {
+					    $mouse.left.release;
+					    emit Mouse::Release.new: :$<x>, :$<y>;
+					}
+				    }
 				    default { emit ~$_; }
 				}
 			    } else { emit "unreckognized csi {$csi.decode}" }
@@ -324,23 +334,21 @@ class Position {
 	};
 
 	constant $time-out = 5;
-	# display the position
 	react {
-	    whenever $mouse-reporting {
+	    whenever $mouse-and-keyboard-reporting {
 		when Mouse::Event {
 		    my ($x, $y) = (.x, .y).map: * div $square-size;
 		    my ($r, $c) = 7 - $y, $x;
 		    if $r & $c ~~ ^8 {
-			# hand-shaped pointer
-			printf "\e]22;hand\a";
 			my $square = square::{ ('a'..'h')[$c] ~ ($r + 1) };
 			if @!board[$square].defined {
-			    when Mouse::Click   { print "\e]22;grabbing\a" }
-			    print "\r$square {@!board[$square]}";
+			    # hand-shaped pointer
+			    print "\e]22;hand\a";
+			    print "\r$square {@!board[$square]}\e[K";
 			} else { print  "\e]22;not-allowed\a\e[2K"; }
 		    } else { printf "\e]22;default\a"; }
 		}
-		when Mouse::Release { print "\e]22;hand\a"; }
+		#when Mouse::Release { print "\e]22;hand\a"; }
 		when Str {
 		    print "\rgot message `$_`\e[K";
 		}
@@ -855,10 +863,6 @@ class Position {
 
 	my $checkerboard-placement-id = Kitty::ID-RANGE.pick;
 
-	my ($rows, $columns) = .rows, .cols given terminal-size;
-	my ($window-height, $window-width) = Chess::Graphics::get-window-size;
-	my ($cell-width, $cell-height) = $window-width div $columns, $window-height div $rows;
-
 	say Kitty::APC
 	a => 'p',
 	i => %Kitty::ID<checkerboard>,
@@ -874,10 +878,7 @@ class Position {
 		p => $checkerboard-placement-id + 1 + $square,
 		P => %Kitty::ID<checkerboard>,
 		Q => $checkerboard-placement-id,
-		H => ($file*$square-size) div $cell-width,
-		X => ($file*$square-size) mod $cell-width,
-		V => ($rank*$square-size) div $cell-height,
-		Y => ($rank*$square-size) mod $cell-height,
+		|Chess::Graphics::get-placement-parameters($rank, $file),
 		z => 10,
 		q => 1
 		;
