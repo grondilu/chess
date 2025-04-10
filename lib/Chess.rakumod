@@ -268,7 +268,7 @@ class Position {
 	}
 
 	# display the position
-	show self;
+	my $placement = self.show;
 
 	class Mouse {
 	    class Button {
@@ -862,14 +862,13 @@ class Position {
 
 	for square::{*} -> $square {
 	    with @!board[$square] -> $piece {
-		my ($rank, $file) = rank($square), file($square);
 		print Kitty::APC
 		a => 'p',
 		i => %Kitty::ID{$piece.symbol},
 		p => $checkerboard-placement-id + 1 + $square,
 		P => %Kitty::ID<checkerboard>,
 		Q => $checkerboard-placement-id,
-		|Chess::Graphics::get-placement-parameters($rank, $file),
+		|Chess::Graphics::get-placement-parameters($square),
 		z => 10,
 		q => 1
 		;

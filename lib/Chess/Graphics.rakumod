@@ -1,4 +1,6 @@
 unit module Chess::Graphics;
+use Chess::Board;
+
 use Term::termios;
 use Terminal::Size;
 
@@ -28,9 +30,8 @@ our sub get-window-size {
 }
 
 
-subset Coord of UInt where ^8;
-
-our sub get-placement-parameters(Coord $rank, Coord $file) {
+our sub get-placement-parameters(square $square) {
+    my ($rank, $file) = rank($square), file($square);
     my ($rows, $columns) = .rows, .cols given terminal-size;
     my ($window-height, $window-width) = get-window-size;
     my ($cell-width, $cell-height) = $window-width div $columns, $window-height div $rows;
