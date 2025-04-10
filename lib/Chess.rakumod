@@ -27,6 +27,8 @@ POSSIBILITY OF SUCH DAMAGE.
 }}}
 use Chess::PGN;
 use Chess::FEN;
+
+use Chess::Board;
 use Chess::Graphics;
 
 use Kitty;
@@ -42,17 +44,6 @@ class QueensideCastle {...}
 class Position {...}
 
 sub term:<startpos> is export { Position.new }
-
-enum color is export <white black>;
-sub prefix:<¬>(color $color --> color) { $color ~~ white ?? black !! white }
-
-# https://en.wikipedia.org/wiki/0x88
-enum square is export ((([1..8] .reverse) X[R~] 'a'..'h') Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
-our sub rank(square $sq) { $sq +>  4 }
-our sub file(square $sq) { $sq +& 15 }
-
-constant %SECOND-RANK = (white) => rank(a2), (black) => rank(a7);
-constant PROMOTION-RANK = rank(a1)|rank(a8);
 
 # https://www.w3.org/TR/png/#3PNGsignature
 constant PNG-SIGNATURE = Blob.new: 137, 80, 78, 71, 13, 10, 26, 10;

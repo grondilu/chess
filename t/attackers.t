@@ -1,6 +1,7 @@
 use Test;
 use lib <lib>;
 use Chess;
+use Chess::Board;
 
 sub getAttackerCount(Chess::Position $position, $color) {
     square::{*}.sort(*.value).map: { $position.attackers($_, $color).elems }

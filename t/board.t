@@ -1,6 +1,7 @@
 use Test;
 use lib <lib>;
 use Chess;
+use Chess::Board;
 
 constant @tests = [
     {
