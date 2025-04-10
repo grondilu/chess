@@ -3,6 +3,10 @@ use Term::termios;
 
 our constant %ID = <checkerboard green p P b B n N r R q Q k K> Z=> 100..*;
 
+our sub pick-placement-id returns UInt {
+    # https://sw.kovidgoyal.net/kitty/graphics-protocol/#display-images-on-screen
+    (1..4294967295).pick
+}
 our sub get-window-size {
     ENTER my $saved_termios := Term::termios.new(fd => 1).getattr;
     LEAVE $saved_termios.setattr: :DRAIN;

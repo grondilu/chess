@@ -234,10 +234,6 @@ class Position {
 
     }
 
-    method test {
-
-
-    }
     method input-moves {
 	ENTER my $saved-termios := Term::termios.new(fd => 1).getattr;
 	LEAVE $saved-termios.setattr: :DRAIN;
@@ -248,6 +244,9 @@ class Position {
 	    $termios.setattr: :DRAIN;
 	}
 
+	# In addition to console_codes (4) :
+	# =item L<ANSI Escape Codes|https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797>
+	# =item L<XTerm control sequences|https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
 	ENTER {
 	    print join '',
 	    # save state
@@ -281,7 +280,17 @@ class Position {
 
 	show self;
 
-
+	class Mouse {
+	    class Button { has Bool $.is-pressed; }
+	    has Button ($.left, $.right);
+	    class Event {
+		has UInt(Cool) ($.x, $.y); 
+		method isInsideChessboard returns Bool { $!x&$!y ~~ 0..(8*$square-size) }
+	    }
+	    class Click   is Event { }
+	    class Release is Event { }
+	    class Move    is Event { }
+	}
 	my $mouse-reporting = supply {
 	    loop {
 		my Buf $buf .= new;
@@ -294,8 +303,12 @@ class Position {
 				$csi.push: $r;
 				last if $r.head == <M m>».ord.any;
 			    }
-			    if $csi.decode ~~ / \[ <[<>]> [\d+]\; (\d+)+ % ';' <m=[mM]>/ {
-				emit [ |$0».Int, $<m>  ];
+			    if $csi.decode ~~ / \[ <[<>]> [$<private-code> =\d+]\; [$<x> = \d+] \; [$<y> = \d+] <m=[mM]>/ {
+				given $<private-code> {
+				    when 35 { emit Mouse::Move.new:  :$<x>, :$<y> }
+				    when  0 { emit ($<m> eq 'M' ?? Mouse::Click !! Mouse::Release).new: :$<x>, :$<y> }
+				    default { emit ~$_; }
+				}
 			    } else { emit "unreckognized csi {$csi.decode}" }
 			} else { $buf.push($_) }
 		    }
@@ -309,20 +322,22 @@ class Position {
 	# display the position
 	react {
 	    whenever $mouse-reporting {
-		when Array {
-		    my ($x, $y) = .map: * div $square-size;
+		when Mouse::Event {
+		    my ($x, $y) = (.x, .y).map: * div $square-size;
 		    my ($r, $c) = 7 - $y, $x;
 		    if $r & $c ~~ ^8 {
 			# hand-shaped pointer
 			printf "\e]22;hand\a";
 			my $square = square::{ ('a'..'h')[$c] ~ ($r + 1) };
 			if @!board[$square].defined {
-			    print "\r$square ({.[2]}) {@!board[$square]}";
+			    when Mouse::Click   { print "\e]22;grabbing\a" }
+			    print "\r$square {@!board[$square]}";
 			} else { print  "\e]22;not-allowed\a\e[2K"; }
 		    } else { printf "\e]22;default\a"; }
 		}
+		when Mouse::Release { print "\e]22;hand\a"; }
 		when Str {
-		    print "\rgot message `$_`";
+		    print "\rgot message `$_`\e[K";
 		}
 	    }
 	    # can't make the line below work for some reason
@@ -830,11 +845,10 @@ class Position {
 
 	return my uint64 $ = $piece +^ $castle +^ $en-passant +^ $turn;
     }
-    method show {
+    method show returns UInt {
 	Kitty::transmit-data;
 
-	state $checkerboard-placement-id = 2000;
-	LEAVE $checkerboard-placement-id += 1 + 64;
+	my $checkerboard-placement-id = Kitty::pick-placement-id;
 
 	my ($rows, $columns) = .rows, .cols given terminal-size;
 	my ($window-height, $window-width) = Kitty::get-window-size;
@@ -852,7 +866,7 @@ class Position {
 		print Kitty::APC
 		a => 'p',
 		i => %Kitty::ID{$piece.symbol},
-		p => $checkerboard-placement-id + $square,
+		p => $checkerboard-placement-id + 1 + $square,
 		P => %Kitty::ID<checkerboard>,
 		Q => $checkerboard-placement-id,
 		H => ($file*$square-size) div $cell-width,
@@ -860,12 +874,12 @@ class Position {
 		V => ($rank*$square-size) div $cell-height,
 		Y => ($rank*$square-size) mod $cell-height,
 		z => 10,
-		q => 1,
-		C => 1;
+		q => 1
+		;
 	    }
 	}
 
-
+	return $checkerboard-placement-id;
     }
 }
 
