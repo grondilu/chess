@@ -220,7 +220,7 @@ class Position {
 		for @rank {
 		    if .defined {
 			my ($R, $C) = ($r, $c).map: { 60 * ($flip-board ?? 7 - $_ !! $_) }
-			$C--; # It just looks better with this. Don't ask my why!
+			$C--; # It just looks better with this. Don't ask me why!
 			take qq[composite -geometry +$C+$R <(basenc -d --base64 <<<"%pieces{.value.symbol}") - png:-];
 		    }
 		    $c++;
@@ -232,6 +232,10 @@ class Position {
 	}.join(" |\n"),
 	:out, :bin
 	;
+
+    }
+
+    method test {
 
     }
 
@@ -849,7 +853,7 @@ class Position {
     method show returns UInt {
 	Kitty::transmit-data;
 
-	my $checkerboard-placement-id = Kitty::pick-placement-id;
+	my $checkerboard-placement-id = Kitty::ID-RANGE.pick;
 
 	my ($rows, $columns) = .rows, .cols given terminal-size;
 	my ($window-height, $window-width) = Chess::Graphics::get-window-size;
