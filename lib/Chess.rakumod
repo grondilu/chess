@@ -833,7 +833,8 @@ class Position {
     method show {
 	Kitty::transmit-data;
 
-	constant $checkerboard-placement-id = 2000;
+	state $checkerboard-placement-id = 2000;
+	LEAVE $checkerboard-placement-id += 1 + 64;
 
 	my ($rows, $columns) = .rows, .cols given terminal-size;
 	my ($window-height, $window-width) = Kitty::get-window-size;
@@ -851,7 +852,7 @@ class Position {
 		print Kitty::APC
 		a => 'p',
 		i => %Kitty::ID{$piece.symbol},
-		p => $checkerboard-placement-id + 8*$rank + $file + 1,
+		p => $checkerboard-placement-id + $square,
 		P => %Kitty::ID<checkerboard>,
 		Q => $checkerboard-placement-id,
 		H => ($file*$square-size) div $cell-width,
