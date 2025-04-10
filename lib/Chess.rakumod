@@ -335,6 +335,7 @@ class Position {
 
 			} else { print  "\e]22;not-allowed\a\e[2K"; }
 			when Mouse::Click {
+			    print "\r[" ~ self.moves(:$square).map(*.SAN) ~ "]\e[K";
 			    print Kitty::APC
 			    a => 'p',
 			    i => %Kitty::ID<green-square>,

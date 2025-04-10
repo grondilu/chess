@@ -6,7 +6,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.22.6",
+    "version" : "0.22.7",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
@@ -31,6 +31,7 @@
     "resources" : [
 	    "images/checkerboard.png",
 	    "images/green-square.png",
+	    "images/green-circle.png",
 	    "images/K.png",
 	    "images/Q.png",
 	    "images/B.png",
