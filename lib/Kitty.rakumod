@@ -5,7 +5,7 @@ use Term::termios;
 # avoid edges of ID true range
 constant margin = 1000;
 our constant ID-RANGE = margin..(4294967295 - margin);
-our constant %ID = <checkerboard green p P b B n N r R q Q k K> Z=> ID-RANGE.pick..*;
+our constant %ID = <checkerboard green-square p P b B n N r R q Q k K> Z=> ID-RANGE.pick..*;
 
 our sub transmit-data {
     once for %ID {

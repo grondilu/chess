@@ -225,10 +225,6 @@ class Position {
 
     }
 
-    method test {
-
-    }
-
     method input-moves {
 	ENTER my $saved-termios := Term::termios.new(fd => 1).getattr;
 	LEAVE $saved-termios.setattr: :DRAIN;
@@ -336,7 +332,29 @@ class Position {
 			    # hand-shaped pointer
 			    print "\e]22;hand\a";
 			    print "\r$square {@!board[$square]}\e[K";
+
 			} else { print  "\e]22;not-allowed\a\e[2K"; }
+			when Mouse::Click {
+			    print Kitty::APC
+			    a => 'p',
+			    i => %Kitty::ID<green-square>,
+			    p => $placement + 1 + 64+$square,
+			    P => %Kitty::ID<checkerboard>,
+			    Q => $placement,
+			    |Chess::Graphics::get-placement-parameters($square),
+			    z => 10,
+			    q => 1
+			    ;
+			}
+			when Mouse::Release {
+			    print Kitty::APC
+			    a => 'd',
+			    d => 'i',
+			    i => %Kitty::ID<green-square>,
+			    p => $placement + 1 + 64+$square,
+			    q => 1
+			    ;
+			}
 		    } else { printf "\e]22;default\a"; }
 		}
 		#when Mouse::Release { print "\e]22;hand\a"; }
