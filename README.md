@@ -2,6 +2,10 @@
 
 Chess-related stuff in Raku
 
+**DISCLAIMER: recent changes make most of the documentation
+below inexact.  Corrections will come.**
+
+
 ## SYNOPSIS
 
 ```
@@ -10,7 +14,7 @@ $ raku -MChess
 rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 > say startpos * 'e4'; # position after 1.e4
 rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
-> show startpos * 'd4';  # see further for kitty terminal
+> (startpos * 'd4').ascii;  # see further for kitty terminal
    +------------------------+
  8 | r  n  b  q  k  b  n  r |
  7 | p  p  p  p  p  p  p  p |
@@ -25,6 +29,7 @@ rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
 [d3 d4 e3 e4 c3 c4 f3 f4 Nf3 Nh3 h3 h4 a3 a4 g3 g4 Na3 Nc3 b3 b4]
  ```
 ## Description
+
 
 ### Exported symbols
 
@@ -90,8 +95,8 @@ This requires :
   - ~~an internet connection (to access the lichess API);~~
   - [Kitty](https://sw.kovidgoyal.net/kitty/), or any terminal supporting its [graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
   - ~~`wget`~~
-  - [ImageMagick](https://imagemagick.org/script/command-line-tools.php)
-  - GNU's *coreutils* (for `basenc`)
+  - ~~[ImageMagick](https://imagemagick.org/script/command-line-tools.php)~~
+  - ~~GNU's *coreutils* (for `basenc`)~~
 
 ### Polyglot books
 
