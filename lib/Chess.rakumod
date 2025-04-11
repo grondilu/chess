@@ -29,11 +29,7 @@ use Chess::PGN;
 use Chess::FEN;
 
 use Chess::Board;
-use Chess::Graphics;
-
-use Kitty;
-use Term::termios;
-use Terminal::Size;
+use Chess::Pieces;
 
 class Move     {...}
 class PawnMove {...}
@@ -42,14 +38,10 @@ class EnPassant {...}
 class Promotion {...}
 class KingsideCastle {...}
 class QueensideCastle {...}
+
 class Position {...}
 
 sub term:<startpos> is export { Position.new }
-
-# https://www.w3.org/TR/png/#3PNGsignature
-constant PNG-SIGNATURE = Blob.new: 137, 80, 78, 71, 13, 10, 26, 10;
-
-constant $square-size = 60;
 
 subset SAN of Str is export where /^<Chess::PGN::SAN>$/;
 
@@ -59,45 +51,12 @@ subset en-passant-square of square where /<[36]>$/;
 
 enum castling-rights <kingside queenside>;
 
-role Piece { method symbol { 'Ø' } }
-role Piece[Str $symbol, UInt $mask] {
-  has color $.color;
-  method attacks($index) { 
-    (BEGIN blob8.new(
-      20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0,
-      0, 0, 0, 24, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 20, 0, 0, 0, 0, 24, 0, 0,
-      0, 0, 20, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 0,
-      0, 0, 0, 0, 20, 0, 0, 24, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20,
-      2, 24, 2, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 53, 56, 53, 2, 0, 0,
-      0, 0, 0, 0, 24, 24, 24, 24, 24, 24, 56, 0, 56, 24, 24, 24, 24, 24, 24,
-      0, 0, 0, 0, 0, 0, 2, 53, 56, 53, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      20, 2, 24, 2, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 24, 0, 0, 20,
-      0, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0,
-      20, 0, 0, 0, 0, 24, 0, 0, 0, 0, 20, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 24,
-      0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20
-    ))[$index] +& $mask
-  }
-  method offsets {...}
-  multi method symbol(Piece:D:) { ($!color ~~ white ?? *.uc !! *.lc)($symbol) }
-  multi method symbol(Piece:U:) { $symbol }
-  multi method gist(::?CLASS:D:) { $!color ~ " " ~ %(:p<pawn>, :n<knight>, :b<bishop>, :r<rook>, :q<queen>, :k<king>){$symbol} }
-  multi method gist(::?CLASS:U:) { %(:p<pawn>, :n<knight>, :b<bishop>, :r<rook>, :q<queen>, :k<king>){$symbol} }
-}
-
-class ActualPiece {}
-class Pawn   is ActualPiece does Piece['p',  1] {
-    method offsets { (constant @ = 16, 32, 17, 15).map: * * ($.color == white ?? -1 !! +1) }
-}
-class Knight is ActualPiece does Piece['n',  2] { method offsets { constant @ = -18, -33, -31, -14, 18, 33, 31, 14 } }
-class Bishop is ActualPiece does Piece['b',  4] { method offsets { constant @ = -17, -15, 17, 15 }  }
-class Rook   is ActualPiece does Piece['r',  8] { method offsets { constant @ = -16, 1, 16, -1 } }
-class Queen  is ActualPiece does Piece['q', 16] { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
-class King   is ActualPiece does Piece['k', 32] { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
-
 class Position {
     trusts Move;
     has Piece @!board[128];
     method !board { @!board }
+
+    method AT-KEY(square $square) returns Piece { @!board[$square] }
 
     method board {
 	do for square::{*}.sort(*.value).rotor(8) -> @row {
@@ -193,242 +152,6 @@ class Position {
 	$!move-number
     }
 
-    method png returns Blob {
-
-	(state %){self.uint.base(36)} //= .out.slurp given shell gather {
-	    sub encode(Distribution::Resource $resource --> Str) {
-		use Base64;
-		encode-base64($resource.slurp(:bin, :close)).join
-	    }
-	    my Bool $flip-board = self.turn ~~ black;
-	    # default checkerboard has 60x60 squares
-	    my $checkboard = encode %?RESOURCES<images/checkerboard.png>;
-	    my %pieces = <K Q R B N P k q r b n p>.map: { $_ => encode(%?RESOURCES{"images/$_.png"}) };
-
-	    take qq[magick <(basenc -d --base64 <<<"$checkboard") png:-];
-	    my ($r, $c) = 0, 0;
-	    for self.board -> @rank {
-		for @rank {
-		    if .defined {
-			my ($R, $C) = ($r, $c).map: { 60 * ($flip-board ?? 7 - $_ !! $_) }
-			$C--; # It just looks better with this. Don't ask me why!
-			take qq[composite -geometry +$C+$R <(basenc -d --base64 <<<"%pieces{.value.symbol}") - png:-];
-		    }
-		    $c++;
-		}
-		$c = 0;
-		$r++;
-	    }
-	    take qq[magick - -resize {join 'x', (8*$square-size) xx 2} png:-];
-	}.join(" |\n"),
-	:out, :bin
-	;
-
-    }
-
-    method input-moves {
-	my $saved-termios := Term::termios.new(fd => 1).getattr;
-	LEAVE $saved-termios.setattr: :DRAIN;
-
-	my $termios := Term::termios.new(fd => 1).getattr;
-	$termios.makeraw;
-	$termios.setattr: :DRAIN;
-
-	# See :
-	# =item `man 4 consoles_codes`
-	# =item L<ANSI Escape Codes|https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797>
-	# =item L<XTerm control sequences|https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
-	print join '',
-	"\e7",                   # save state
-	"\e[?47h\e[2J",          # save the screen and erase it
-	"\e[?25l";               # make cursor invisible
-	LEAVE {
-	    print join '',
-	    "\e[?25h",           # make cursor visible
-	    "\e[?47l",           # restore the screen
-	    "\e8"                # restore state
-	    ;
-	}
-
-	# display the position
-	my $placement = self.show;
-	say "\rmake your moves with the mouse";
-	say "\rquit with `q`";
-
-	print "\e[?1016h"; # Enable SGR mode for better precision
-	print "\e[?1002h"; # Enable button-event tracking (press/release)
-	#print "\e[?1003h"; # Enable all mouse events (motion)
-	LEAVE {
-	    #print "\e[?1003l";
-	    print "\e[?1002l";
-	    print "\e[?1016l";
-	}
-
-	class Mouse {
-	    class Button {
-		has Bool $.is-pressed handles <Bool>;
-		method press   { $!is-pressed = True }
-		method release { $!is-pressed = False }
-	    }
-	    has Button ($.left, $.right);
-	    submethod BUILD { $!left.=new; $!right.=new }
-	    class Event {
-		has UInt(Cool) ($.x, $.y); 
-		method isInsideChessboard returns Bool { $!x&$!y ~~ 0..(8*$square-size) }
-	    }
-	    class Click   is Event { }
-	    class Release is Event { }
-	    class Move    is Event { }
-	}
-
-	enum State <
-	    IDLE
-	    ONE-SQUARE-IS-SELECTED
-	>;
-
-	my $*terminal-size = terminal-size;
-	my ($*window-height, $*window-width) = Chess::Graphics::get-window-size;
-
-	my Mouse $mouse .= new;
-	my State $board-state = IDLE;
-
-	my square $selected-square;
-
-	my Supplier $mouse-and-keyboard-reporting .= new;
-
-	start {
-	    loop {
-		my Buf $buf .= new: $*IN.read(1);
-		if $buf.tail.chr eq "\e" {
-		    $buf ~= $*IN.read(1);
-		    if $buf.tail.chr eq '[' {
-			repeat { $buf ~= $*IN.read(1) } until $buf.tail ~~ 4*16 .. 7*16+14;
-			if $buf.decode ~~ / \[ <[<>]> [$<private-code> =\d+]\; [$<x> = \d+] \; [$<y> = \d+] <m=[mM]>/ {
-			    given $<private-code> {
-				when 35 { $mouse-and-keyboard-reporting.emit: Mouse::Move.new:  :$<x>, :$<y> }
-				when  0 {
-				    if $<m> eq 'M' {
-					$mouse.left.press;
-					$mouse-and-keyboard-reporting.emit: Mouse::Click.new: :$<x>, :$<y>;
-				    } else {
-					$mouse.left.release;
-					$mouse-and-keyboard-reporting.emit: Mouse::Release.new: :$<x>, :$<y>;
-				    }
-				}
-				default { $mouse-and-keyboard-reporting.emit: ~$/; }
-			    }
-			} else { $mouse-and-keyboard-reporting.emit: "unreckognized csi {$buf.decode.raku}" }
-		    } else { $mouse-and-keyboard-reporting.emit: "unknown escape sequence {$buf.decode.raku}" }
-		} else {
-		    until try my $c = $buf.decode { $buf ~= $*IN.read(1) };
-		    $mouse-and-keyboard-reporting.emit: $c;
-		    if $c eq 'q' { $mouse-and-keyboard-reporting.done; last }
-		}
-	    }
-	};
-
-	react {
-	    whenever $mouse-and-keyboard-reporting {
-		when Mouse::Event {
-		    my ($x, $y) = (.x, .y).map: * div $square-size;
-		    my ($r, $c) = 7 - $y, $x;
-		    if $r & $c ~~ ^8 {
-			my $square = square::{ ('a'..'h')[$c] ~ ($r + 1) };
-			if @!board[$square].defined && @!board[$square].color == $!turn {
-			    print "\r$board-state: $square -> {self.moves(:$square)».SAN}\e[K";
-			    # hand-shaped pointer
-			    when Mouse::Click {
-				if $board-state == IDLE {
-				    my @moves = self.moves(:$square);
-				    if @moves > 0 {
-					$board-state = ONE-SQUARE-IS-SELECTED;
-					$selected-square = $square;
-					print Kitty::APC
-					a => 'p',
-					p => $placement + 70,
-					i => %Kitty::ID<green-square>,
-					P => %Kitty::ID<checkerboard>,
-					Q => $placement,
-					|Chess::Graphics::get-placement-parameters($square),
-					z => @!board[$square] ?? 1 !! 0,
-					q => 1
-					;
-					for @moves {
-					    print Kitty::APC
-					    a => 'p',
-					    p => $placement + 71 + $++,
-					    i => %Kitty::ID<green-circle>,
-					    P => %Kitty::ID<checkerboard>,
-					    Q => $placement,
-					    |Chess::Graphics::get-placement-parameters(.to),
-					    z => @!board[$square] ?? 1 !! 0,
-					    q => 1
-					    ;
-					}
-
-				    }
-				}
-				elsif $board-state == ONE-SQUARE-IS-SELECTED {
-				    print Kitty::APC
-				    a => 'd',
-				    d => 'i',
-				    p => $placement + 70,
-				    i => %Kitty::ID<green-square>,
-				    q => 1;
-				    for self.moves(:square($selected-square)) {
-					print Kitty::APC
-					a => 'd',
-					d => 'i',
-					p => $placement + 71 + $++,
-					i => %Kitty::ID<green-circle>,
-					q => 1;
-				    }
-				    if $square == $selected-square {
-					$board-state = IDLE;
-					$selected-square = square;
-				    } else {
-					$selected-square = $square;
-					print Kitty::APC
-					a => 'p',
-					p => $placement + 70,
-					i => %Kitty::ID<green-square>,
-					P => %Kitty::ID<checkerboard>,
-					Q => $placement,
-					|Chess::Graphics::get-placement-parameters($square),
-					z => 10,
-					q => 1
-					;
-					for self.moves(:$square) {
-					    print Kitty::APC
-					    a => 'p',
-					    p => $placement + 71 + $++,
-					    i => %Kitty::ID<green-circle>,
-					    P => %Kitty::ID<checkerboard>,
-					    Q => $placement,
-					    |Chess::Graphics::get-placement-parameters(.to),
-					    z => 11,
-					    q => 1
-					    ;
-					}
-				    }
-				}
-				print "\e]22;grabbing\a";
-			    }
-			    when Mouse::Release { print "\e]22;grab\a";  }
-			    default { print "\e]22;hand\a"; }
-			} else { print  "\e]22;not-allowed\a\e[2K"; }
-		    } else { printf "\e]22;default\a"; }
-		}
-		#when Mouse::Release { print "\e]22;hand\a"; }
-		when Str {
-		    print "\rgot message `$_`\e[K";
-		}
-	    }
-	    # can't make the line below work for some reason
-	    #whenever Promise.in($time-out) { done }
-	}
-    }
-
     method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 	my ($us, $them) = $!turn, ¬$!turn;
 	my @squares = $square ?? ($square,) !! square::{*};
@@ -443,7 +166,7 @@ class Position {
 		my square $to;
 		if @!board[$from] ~~ Pawn {
 		    my $pawn = @!board[$from];
-		    next if $piece ~~ ActualPiece && $piece !~~ Pawn;
+		    next if $piece.symbol ne 'Ø' && $piece !~~ Pawn;
 		    $to = square($from + $pawn.offsets[0]);
 		    if !@!board[$to] {
 			if rank($to) == PROMOTION-RANK {
@@ -472,7 +195,7 @@ class Position {
 			}
 		    }
 		} else {
-		    next if $piece ~~ ActualPiece && @!board[$from] !~~ $piece;
+		    next if $piece.symbol ne 'Ø' && @!board[$from] !~~ $piece;
 		    for @!board[$from].offsets -> $offset {
 			$to = $from;
 			loop {
@@ -490,7 +213,7 @@ class Position {
 		    }
 		}
 	    }
-	    if $piece !~~ ActualPiece || $piece ~~ King {
+	    if $piece.symbol eq 'Ø' || $piece ~~ King {
 		if $piece ~~ King || $square.defined && $square == %!kings{$us} {
 		    if kingside ∈ %!castling-rights{$us} {
 			my square $castling-from = %!kings{$us};
@@ -929,38 +652,6 @@ class Position {
 
 	return my uint64 $ = $piece +^ $castle +^ $en-passant +^ $turn;
     }
-    method show returns UInt {
-	once Kitty::transmit-data;
-
-	my $checkerboard-placement-id = Kitty::ID-RANGE.pick;
-
-	my $*terminal-size = terminal-size;
-	my ($*window-height, $*window-width) = Chess::Graphics::get-window-size;
-
-	say Kitty::APC
-	a => 'p',
-	i => %Kitty::ID<checkerboard>,
-	p => $checkerboard-placement-id,
-	z => 0,
-	q => 1;
-
-	for square::{*} -> $square {
-	    with @!board[$square] -> $piece {
-		print Kitty::APC
-		a => 'p',
-		i => %Kitty::ID{$piece.symbol},
-		p => $checkerboard-placement-id + 1 + $square,
-		P => %Kitty::ID<checkerboard>,
-		Q => $checkerboard-placement-id,
-		|Chess::Graphics::get-placement-parameters($square),
-		z => 1,
-		q => 1
-		;
-	    }
-	}
-
-	return $checkerboard-placement-id;
-    }
 }
 
 class Move {
@@ -1190,19 +881,6 @@ multi legal-moves(Str $fen where { Chess::FEN.parse: $_ }) is export {
     Chess::Position.new($fen).moves
 }
 
-proto show($) is export {*}
-multi show(Position $pos) {
-    if %*ENV<TERM> eq 'xterm-kitty' { samewith $pos.png }
-    else { say $pos }
-}
-multi show(Blob $blob where $blob.subbuf(0, 8) ~~ PNG-SIGNATURE) {
-    use Kitty;
-    say Kitty::APC
-    $blob,
-    a => 'T',
-    f => 100,
-    t => 'd'
-}
 
 class Game {
     has Pair @.tag-pair;
@@ -1249,7 +927,6 @@ multi make-book($data) {
 	$buf;
     }
 }
-
 
 sub perft(UInt $depth, Position :$position = startpos) returns UInt is export {
   my $nodes = 0;
