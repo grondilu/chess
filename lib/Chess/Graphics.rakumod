@@ -1,12 +1,11 @@
 unit module Chess::Graphics;
 use Chess::Board;
 
-use Term::termios;
-use Terminal::Size;
 
 our constant $square-size = 60;
 
 our sub get-window-size {
+    use Term::termios;
     ENTER my $saved_termios := Term::termios.new(fd => 1).getattr;
     LEAVE $saved_termios.setattr: :DRAIN;
     my $termios := Term::termios.new(fd => 1).getattr;
@@ -29,11 +28,9 @@ our sub get-window-size {
     } else { fail "could not read stdin" }
 }
 
-
-our sub get-placement-parameters(square $square) {
+our sub get-placement-parameters(square $square, :$terminal-size, :@window-size ($window-height, $window-width)) {
     my ($rank, $file) = rank($square), file($square);
-    my ($rows, $columns) = .rows, .cols given terminal-size;
-    my ($window-height, $window-width) = get-window-size;
+    my ($rows, $columns) = .rows, .cols given $terminal-size;
     my ($cell-width, $cell-height) = $window-width div $columns, $window-height div $rows;
     %(
 	H => ($file*$square-size) div $cell-width,

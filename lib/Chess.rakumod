@@ -33,6 +33,7 @@ use Chess::Graphics;
 
 use Kitty;
 use Term::termios;
+use Terminal::Size;
 
 class Move     {...}
 class PawnMove {...}
@@ -233,7 +234,8 @@ class Position {
 	$termios.makeraw;
 	$termios.setattr: :DRAIN;
 
-	# In addition to console_codes (4) :
+	# See :
+	# =item `man 4 consoles_codes`
 	# =item L<ANSI Escape Codes|https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797>
 	# =item L<XTerm control sequences|https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
 	print join '',
@@ -255,9 +257,9 @@ class Position {
 
 	print "\e[?1016h"; # Enable SGR mode for better precision
 	print "\e[?1002h"; # Enable button-event tracking (press/release)
-	print "\e[?1003h"; # Enable all mouse events (motion)
+	#print "\e[?1003h"; # Enable all mouse events (motion)
 	LEAVE {
-	    print "\e[?1003l";
+	    #print "\e[?1003l";
 	    print "\e[?1002l";
 	    print "\e[?1016l";
 	}
@@ -283,6 +285,9 @@ class Position {
 	    IDLE
 	    ONE-SQUARE-IS-SELECTED
 	>;
+
+	my $terminal-size = terminal-size;
+	my @window-size = Chess::Graphics::get-window-size;
 
 	my Mouse $mouse .= new;
 	my State $board-state = IDLE;
@@ -334,29 +339,53 @@ class Position {
 			    # hand-shaped pointer
 			    when Mouse::Click {
 				if $board-state == IDLE {
-				    $board-state = ONE-SQUARE-IS-SELECTED;
-				    $selected-square = $square;
+				    my @moves = self.moves(:$square);
+				    if @moves > 0 {
+					$board-state = ONE-SQUARE-IS-SELECTED;
+					$selected-square = $square;
+					print Kitty::APC
+					a => 'p',
+					p => $placement + 70,
+					i => %Kitty::ID<green-square>,
+					P => %Kitty::ID<checkerboard>,
+					Q => $placement,
+					|Chess::Graphics::get-placement-parameters($square, :$terminal-size, :@window-size),
+					z => @!board[$square] ?? 1 !! 0,
+					q => 1
+					;
+					for @moves {
+					    print Kitty::APC
+					    a => 'p',
+					    p => $placement + 71 + $++,
+					    i => %Kitty::ID<green-circle>,
+					    P => %Kitty::ID<checkerboard>,
+					    Q => $placement,
+					    |Chess::Graphics::get-placement-parameters(.to, :$terminal-size, :@window-size),
+					    z => @!board[$square] ?? 1 !! 0,
+					    q => 1
+					    ;
+					}
+
+				    }
+				}
+				elsif $board-state == ONE-SQUARE-IS-SELECTED {
 				    print Kitty::APC
-				    a => 'p',
+				    a => 'd',
+				    d => 'i',
 				    p => $placement + 70,
 				    i => %Kitty::ID<green-square>,
-				    P => %Kitty::ID<checkerboard>,
-				    Q => $placement,
-				    |Chess::Graphics::get-placement-parameters($square),
-				    z => 10,
-				    q => 1
-				    ;
-				} elsif $board-state == ONE-SQUARE-IS-SELECTED {
-				    if $square == $selected-square {
-					$board-state = IDLE;
-					$selected-square = square;
-					$selected-square = $square;
+				    q => 1;
+				    for self.moves(:square($selected-square)) {
 					print Kitty::APC
 					a => 'd',
 					d => 'i',
-					p => $placement + 70,
-					i => %Kitty::ID<green-square>,
-					q => 1
+					p => $placement + 71 + $++,
+					i => %Kitty::ID<green-circle>,
+					q => 1;
+				    }
+				    if $square == $selected-square {
+					$board-state = IDLE;
+					$selected-square = square;
 				    } else {
 					$selected-square = $square;
 					print Kitty::APC
@@ -365,10 +394,22 @@ class Position {
 					i => %Kitty::ID<green-square>,
 					P => %Kitty::ID<checkerboard>,
 					Q => $placement,
-					|Chess::Graphics::get-placement-parameters($square),
+					|Chess::Graphics::get-placement-parameters($square, :$terminal-size, :@window-size),
 					z => 10,
 					q => 1
 					;
+					for self.moves(:$square) {
+					    print Kitty::APC
+					    a => 'p',
+					    p => $placement + 71 + $++,
+					    i => %Kitty::ID<green-circle>,
+					    P => %Kitty::ID<checkerboard>,
+					    Q => $placement,
+					    |Chess::Graphics::get-placement-parameters(.to, :$terminal-size, :@window-size),
+					    z => 11,
+					    q => 1
+					    ;
+					}
 				    }
 				}
 				print "\e]22;grabbing\a";
@@ -893,10 +934,14 @@ class Position {
 
 	my $checkerboard-placement-id = Kitty::ID-RANGE.pick;
 
+	my $terminal-size = terminal-size;
+	my @window-size = Chess::Graphics::get-window-size;
+
 	say Kitty::APC
 	a => 'p',
 	i => %Kitty::ID<checkerboard>,
 	p => $checkerboard-placement-id,
+	z => 0,
 	q => 1;
 
 	for square::{*} -> $square {
@@ -907,8 +952,8 @@ class Position {
 		p => $checkerboard-placement-id + 1 + $square,
 		P => %Kitty::ID<checkerboard>,
 		Q => $checkerboard-placement-id,
-		|Chess::Graphics::get-placement-parameters($square),
-		z => 10,
+		|Chess::Graphics::get-placement-parameters($square, :$terminal-size, :@window-size),
+		z => 1,
 		q => 1
 		;
 	    }
