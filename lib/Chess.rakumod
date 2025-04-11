@@ -226,24 +226,20 @@ class Position {
     }
 
     method input-moves {
-	ENTER my $saved-termios := Term::termios.new(fd => 1).getattr;
+	my $saved-termios := Term::termios.new(fd => 1).getattr;
 	LEAVE $saved-termios.setattr: :DRAIN;
 
-	ENTER {
-	    my $termios := Term::termios.new(fd => 1).getattr;
-	    $termios.makeraw;
-	    $termios.setattr: :DRAIN;
-	}
+	my $termios := Term::termios.new(fd => 1).getattr;
+	$termios.makeraw;
+	$termios.setattr: :DRAIN;
 
 	# In addition to console_codes (4) :
 	# =item L<ANSI Escape Codes|https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797>
 	# =item L<XTerm control sequences|https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
-	ENTER {
-	    print join '',
-	    "\e7",                # save state
-	    "\e[?47h\e[2J",       # save the screen and erase it
-	    "\e[?25l"             # make cursor invisible
-	}
+	print join '',
+	"\e7",                   # save state
+	"\e[?47h\e[2J",          # save the screen and erase it
+	"\e[?25l";               # make cursor invisible
 	LEAVE {
 	    print join '',
 	    "\e[?25h",           # make cursor visible
@@ -252,19 +248,19 @@ class Position {
 	    ;
 	}
 
-	ENTER {
-	    print "\e[?1016h"; # Enable SGR mode for better precision
-	    print "\e[?1002h"; # Enable button-event tracking (press/release)
-	    print "\e[?1003h"; # Enable all mouse events (motion)
-	}
+	# display the position
+	my $placement = self.show;
+	say "\rmake your moves with the mouse";
+	say "\rquit with `q`";
+
+	print "\e[?1016h"; # Enable SGR mode for better precision
+	print "\e[?1002h"; # Enable button-event tracking (press/release)
+	print "\e[?1003h"; # Enable all mouse events (motion)
 	LEAVE {
 	    print "\e[?1003l";
 	    print "\e[?1002l";
 	    print "\e[?1016l";
 	}
-
-	# display the position
-	my $placement = self.show;
 
 	class Mouse {
 	    class Button {
@@ -283,44 +279,49 @@ class Position {
 	    class Move    is Event { }
 	}
 
-	my Mouse $mouse .= new;
+	enum State <
+	    IDLE
+	    ONE-SQUARE-IS-SELECTED
+	>;
 
-	my $mouse-and-keyboard-reporting = supply {
+	my Mouse $mouse .= new;
+	my State $board-state = IDLE;
+
+	my square $selected-square;
+
+	my Supplier $mouse-and-keyboard-reporting .= new;
+
+	start {
 	    loop {
-		my Buf $buf .= new;
-		repeat {
-		    given $*IN.read(1) {
-			if .head == qq[\e].ord {
-			    my Buf $csi .= new;
-			    loop {
-				my $r = $*IN.read(1);
-				$csi.push: $r;
-				last if $r.head == <M m>».ord.any;
-			    }
-			    if $csi.decode ~~ / \[ <[<>]> [$<private-code> =\d+]\; [$<x> = \d+] \; [$<y> = \d+] <m=[mM]>/ {
-				given $<private-code> {
-				    when 35 { emit Mouse::Move.new:  :$<x>, :$<y> }
-				    when  0 {
-					if $<m> eq 'M' {
-					    $mouse.left.press;
-					    emit Mouse::Click.new: :$<x>, :$<y>;
-					} else {
-					    $mouse.left.release;
-					    emit Mouse::Release.new: :$<x>, :$<y>;
-					}
+		my Buf $buf .= new: $*IN.read(1);
+		if $buf.tail.chr eq "\e" {
+		    $buf ~= $*IN.read(1);
+		    if $buf.tail.chr eq '[' {
+			repeat { $buf ~= $*IN.read(1) } until $buf.tail ~~ 4*16 .. 7*16+14;
+			if $buf.decode ~~ / \[ <[<>]> [$<private-code> =\d+]\; [$<x> = \d+] \; [$<y> = \d+] <m=[mM]>/ {
+			    given $<private-code> {
+				when 35 { $mouse-and-keyboard-reporting.emit: Mouse::Move.new:  :$<x>, :$<y> }
+				when  0 {
+				    if $<m> eq 'M' {
+					$mouse.left.press;
+					$mouse-and-keyboard-reporting.emit: Mouse::Click.new: :$<x>, :$<y>;
+				    } else {
+					$mouse.left.release;
+					$mouse-and-keyboard-reporting.emit: Mouse::Release.new: :$<x>, :$<y>;
 				    }
-				    default { emit ~$_; }
 				}
-			    } else { emit "unreckognized csi {$csi.decode}" }
-			} else { $buf.push($_) }
-		    }
-		} until try my $c = $buf.decode;
-		emit $c;
-		last if $c eq 'q';
+				default { $mouse-and-keyboard-reporting.emit: ~$/; }
+			    }
+			} else { $mouse-and-keyboard-reporting.emit: "unreckognized csi {$buf.decode.raku}" }
+		    } else { $mouse-and-keyboard-reporting.emit: "unknown escape sequence {$buf.decode.raku}" }
+		} else {
+		    until try my $c = $buf.decode { $buf ~= $*IN.read(1) };
+		    $mouse-and-keyboard-reporting.emit: $c;
+		    if $c eq 'q' { $mouse-and-keyboard-reporting.done; last }
+		}
 	    }
 	};
 
-	constant $time-out = 5;
 	react {
 	    whenever $mouse-and-keyboard-reporting {
 		when Mouse::Event {
@@ -328,34 +329,53 @@ class Position {
 		    my ($r, $c) = 7 - $y, $x;
 		    if $r & $c ~~ ^8 {
 			my $square = square::{ ('a'..'h')[$c] ~ ($r + 1) };
-			if @!board[$square].defined {
+			if @!board[$square].defined && @!board[$square].color == $!turn {
+			    print "\r$board-state: $square -> {self.moves(:$square)».SAN}\e[K";
 			    # hand-shaped pointer
-			    print "\e]22;hand\a";
-			    print "\r$square {@!board[$square]}\e[K";
-
+			    when Mouse::Click {
+				if $board-state == IDLE {
+				    $board-state = ONE-SQUARE-IS-SELECTED;
+				    $selected-square = $square;
+				    print Kitty::APC
+				    a => 'p',
+				    p => $placement + 70,
+				    i => %Kitty::ID<green-square>,
+				    P => %Kitty::ID<checkerboard>,
+				    Q => $placement,
+				    |Chess::Graphics::get-placement-parameters($square),
+				    z => 10,
+				    q => 1
+				    ;
+				} elsif $board-state == ONE-SQUARE-IS-SELECTED {
+				    if $square == $selected-square {
+					$board-state = IDLE;
+					$selected-square = square;
+					$selected-square = $square;
+					print Kitty::APC
+					a => 'd',
+					d => 'i',
+					p => $placement + 70,
+					i => %Kitty::ID<green-square>,
+					q => 1
+				    } else {
+					$selected-square = $square;
+					print Kitty::APC
+					a => 'p',
+					p => $placement + 70,
+					i => %Kitty::ID<green-square>,
+					P => %Kitty::ID<checkerboard>,
+					Q => $placement,
+					|Chess::Graphics::get-placement-parameters($square),
+					z => 10,
+					q => 1
+					;
+				    }
+				}
+				print "\e]22;grabbing\a";
+			    }
+			    when Mouse::Release { print "\e]22;grab\a";  }
+			    default { print "\e]22;hand\a"; }
 			} else { print  "\e]22;not-allowed\a\e[2K"; }
-			when Mouse::Click {
-			    print "\r[" ~ self.moves(:$square).map(*.SAN) ~ "]\e[K";
-			    print Kitty::APC
-			    a => 'p',
-			    i => %Kitty::ID<green-square>,
-			    p => $placement + 1 + 64+$square,
-			    P => %Kitty::ID<checkerboard>,
-			    Q => $placement,
-			    |Chess::Graphics::get-placement-parameters($square),
-			    z => 10,
-			    q => 1
-			    ;
-			}
-			when Mouse::Release {
-			    print Kitty::APC
-			    a => 'd',
-			    d => 'i',
-			    i => %Kitty::ID<green-square>,
-			    p => $placement + 1 + 64+$square,
-			    q => 1
-			    ;
-			}
 		    } else { printf "\e]22;default\a"; }
 		}
 		#when Mouse::Release { print "\e]22;hand\a"; }
