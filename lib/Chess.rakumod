@@ -286,8 +286,8 @@ class Position {
 	    ONE-SQUARE-IS-SELECTED
 	>;
 
-	my $terminal-size = terminal-size;
-	my @window-size = Chess::Graphics::get-window-size;
+	my $*terminal-size = terminal-size;
+	my ($*window-height, $*window-width) = Chess::Graphics::get-window-size;
 
 	my Mouse $mouse .= new;
 	my State $board-state = IDLE;
@@ -349,7 +349,7 @@ class Position {
 					i => %Kitty::ID<green-square>,
 					P => %Kitty::ID<checkerboard>,
 					Q => $placement,
-					|Chess::Graphics::get-placement-parameters($square, :$terminal-size, :@window-size),
+					|Chess::Graphics::get-placement-parameters($square),
 					z => @!board[$square] ?? 1 !! 0,
 					q => 1
 					;
@@ -360,7 +360,7 @@ class Position {
 					    i => %Kitty::ID<green-circle>,
 					    P => %Kitty::ID<checkerboard>,
 					    Q => $placement,
-					    |Chess::Graphics::get-placement-parameters(.to, :$terminal-size, :@window-size),
+					    |Chess::Graphics::get-placement-parameters(.to),
 					    z => @!board[$square] ?? 1 !! 0,
 					    q => 1
 					    ;
@@ -394,7 +394,7 @@ class Position {
 					i => %Kitty::ID<green-square>,
 					P => %Kitty::ID<checkerboard>,
 					Q => $placement,
-					|Chess::Graphics::get-placement-parameters($square, :$terminal-size, :@window-size),
+					|Chess::Graphics::get-placement-parameters($square),
 					z => 10,
 					q => 1
 					;
@@ -405,7 +405,7 @@ class Position {
 					    i => %Kitty::ID<green-circle>,
 					    P => %Kitty::ID<checkerboard>,
 					    Q => $placement,
-					    |Chess::Graphics::get-placement-parameters(.to, :$terminal-size, :@window-size),
+					    |Chess::Graphics::get-placement-parameters(.to),
 					    z => 11,
 					    q => 1
 					    ;
@@ -930,12 +930,12 @@ class Position {
 	return my uint64 $ = $piece +^ $castle +^ $en-passant +^ $turn;
     }
     method show returns UInt {
-	Kitty::transmit-data;
+	once Kitty::transmit-data;
 
 	my $checkerboard-placement-id = Kitty::ID-RANGE.pick;
 
-	my $terminal-size = terminal-size;
-	my @window-size = Chess::Graphics::get-window-size;
+	my $*terminal-size = terminal-size;
+	my ($*window-height, $*window-width) = Chess::Graphics::get-window-size;
 
 	say Kitty::APC
 	a => 'p',
@@ -952,7 +952,7 @@ class Position {
 		p => $checkerboard-placement-id + 1 + $square,
 		P => %Kitty::ID<checkerboard>,
 		Q => $checkerboard-placement-id,
-		|Chess::Graphics::get-placement-parameters($square, :$terminal-size, :@window-size),
+		|Chess::Graphics::get-placement-parameters($square),
 		z => 1,
 		q => 1
 		;

@@ -8,7 +8,7 @@ our constant ID-RANGE = margin..(4294967295 - margin);
 our constant %ID = <checkerboard green-square green-circle p P b B n N r R q Q k K> Z=> ID-RANGE.pick..*;
 
 our sub transmit-data {
-    once for %ID {
+    for %ID {
 	print APC
 	%?RESOURCES{"images/{.key}.png"}.slurp(:bin),
 	a => 't',
