@@ -1,8 +1,9 @@
 unit module Chess::Pieces;
 use Chess::Board;
 
-role Piece is export { method symbol { 'Ø' } }
-role Piece[Str $symbol, UInt $mask] is export {
+subset Symbol of Str where /^ :i <[Øprnbqk]> $/;
+role Piece is export { method symbol returns Symbol { 'Ø' } }
+role Piece[Symbol $symbol, UInt $mask] is export {
   has color $.color;
   method attacks($index) { 
     (BEGIN blob8.new(
