@@ -134,7 +134,7 @@ constant @tests = [
 
 
 for @tests {
-    is-deeply Chess::Position.new(.<fen>).board.map(*.map({ .defined ?? (.key => .value.symbol) !! Any }).Array).Array, .<board>, "Board - {.<fen>}";
+    is-deeply Chess::Position.new(.<fen>).all-pairs.map({ .value.defined ?? (square(.key) => .value.symbol) !! Any }).rotor(8).map(*.Array).Array, .<board>, "Board - {.<fen>}";
 }
 
 done-testing;

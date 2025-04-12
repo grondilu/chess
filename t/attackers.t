@@ -1,6 +1,7 @@
 use Test;
 use lib <lib>;
 use Chess;
+use Chess::Colors;
 use Chess::Board;
 
 sub getAttackerCount(Chess::Position $position, $color) {

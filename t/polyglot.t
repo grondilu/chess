@@ -54,10 +54,11 @@ for data.lines {
 }
 
 for startpos.moves -> $move {
+	use Chess::Moves;
 	my $uint = $move.uint;
 
 	given $move.gist {
-		is $uint, Chess::Move.new($uint).uint, qq{"$_" -> $uint -> "$_"};
+		is $uint, Move.new($uint).uint, qq{"$_" -> $uint -> "$_"};
 	}
 }
 	

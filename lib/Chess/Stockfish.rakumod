@@ -1,5 +1,6 @@
 unit class Chess::Stockfish is Proc::Async;
-use Chess;
+use Chess::Moves;
+use Chess::Position;
 
 has Supply $!lines;
 
@@ -51,7 +52,7 @@ method best-move(Chess::Position :$position, UInt :$movetime = 5000 --> Promise)
 	start react {
 		whenever $!lines {
 			if /^<Chess::UCI::best-move>/ {
-				$best-move.keep: Chess::Move.new: ~$<Chess::UCI::best-move>, :$position;
+				$best-move.keep: Move.new: ~$<Chess::UCI::best-move>;
 				done;
 			}
 		}

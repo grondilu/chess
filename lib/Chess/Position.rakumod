@@ -1,4 +1,5 @@
-unit class Chess::Position;
+use Chess::Board;
+unit class Chess::Position is Chess::Board;
 # translated from https://github.com/jhlywa/chess.js.git
 #`{{{ ORIGINAL LICENSE
 Copyright (c) 2025, Jeff Hlywa (jhlywa@gmail.com)
@@ -25,272 +26,258 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 }}}
-use Chess::FEN;
-class Move {...}
-trusts Move;
+use Chess::Colors;
+use Chess::Pieces;
+use Chess::Moves;
 
-enum color is export <white black>;
-sub prefix:<¬>(color $color --> color) { $color ~~ white ?? black !! white }
+constant startpos = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1};
 
-# https://en.wikipedia.org/wiki/0x88
-enum square is export ((([1..8] .reverse) X[R~] 'a'..'h') Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
-sub rank(square $sq) { $sq +>  4 }
-sub file(square $sq) { $sq +& 15 }
-
-subset en-passant-square of square where /<[36]>$/;
-
-enum castling-rights (<white black> »~» '-' X~ <king queen> »~» 'side');
-
-role Piece[Str $symbol, UInt $mask] {
-    has color $.color;
-    method attacks($index) { 
-	(BEGIN blob8.new(
-	    20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0,
-	    0, 0, 0, 24, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 20, 0, 0, 0, 0, 24, 0, 0,
-	    0, 0, 20, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 0,
-	    0, 0, 0, 0, 20, 0, 0, 24, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20,
-	    2, 24, 2, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 53, 56, 53, 2, 0, 0,
-	    0, 0, 0, 0, 24, 24, 24, 24, 24, 24, 56, 0, 56, 24, 24, 24, 24, 24, 24,
-	    0, 0, 0, 0, 0, 0, 2, 53, 56, 53, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	    20, 2, 24, 2, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 24, 0, 0, 20,
-	    0, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0,
-	    20, 0, 0, 0, 0, 24, 0, 0, 0, 0, 20, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 24,
-	    0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20
-	))[$index] +& $mask
-    }
-    method offsets {...}
-    method symbol { ($!color ~~ white ?? *.uc !! *.lc)($symbol) }
-    method gist { $!color ~ " " ~ %(:p<pawn>, :n<knight>, :b<bishop>, :r<rook>, :q<queen>, :k<king>){$symbol} }
-}
-class Pawn   does Piece['p',  1] { method offsets { (constant @ = 16, 32, 17, 15).map: * * ($.color == white ?? +1 !! -1) } }
-class Knight does Piece['n',  2] { method offsets { constant @ = -18, -33, -31, -14, 18, 33, 31, 14 } }
-class Bishop does Piece['b',  4] { method offsets { constant @ = -17, -15, 17, 15 }  }
-class Rook   does Piece['r',  8] { method offsets { constant @ = -16, 1, 16, -1 } }
-class Queen  does Piece['q', 16] { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
-class King   does Piece['k', 32] { method offsets { constant @ = -17, -16, -15, 1, 17, 16, 15, -1 } }
-
-has Piece @!board[128];
-method !board { @!board }
-
-method board {
-    do for square::{*}.sort(*.value).rotor(8) -> @row {
-	do for @row -> $i {
-	    if !@!board[$i].defined {
-		Any
-	    } else {
-		%(
-		    :square(~$i),
-		    :type(@!board[$i].symbol.lc),
-		    :color(@!board[$i].color)
-		)
-	    }
-	}.Array
-    }.Array
-}
+enum castling-rights <kingside queenside>;
 
 has square %.kings{color};
 has color $.turn;
-has Set[castling-rights] $.castling-rights;
+has Set[castling-rights] %.castling-rights{color};
 has en-passant-square $.en-passant;
 has UInt ($.half-moves-count, $.move-number);
+has Move $.last-move;
 
-multi method new(Str $fen = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1}) {
+multi method new(Str $fen = startpos) {
     use Chess::FEN;
     my square %kings{color};
     my Piece @board[128];
     my color $turn;
-    my Set[castling-rights] $castling-rights;
+    my Set[castling-rights] %castling-rights{color};
     my en-passant-square $en-passant;
     my UInt ($half-moves-count, $move-number);
+    my Move $last-move;
     Chess::FEN.parse:
-	$fen,
-	actions => class {
-	    has Int $!r = 0;
-	    has Int $!c = 0;
-	    has Piece %!pieces{square};
-	    method rank($/) { $!r++; $!c=0 }
-	    method piece($/) {
-		my $square = square::{('a'..'h')[$!c++] ~ (7-$!r)+1};
-		@board[$square] = %(<p n b r q k> Z=> Pawn, Knight, Bishop, Rook, Queen, King){~$/.lc}.new(:color(~$/ ~~ /<upper>/ ?? white !! black));
-		if $/ eq 'k'|'K' { %kings{%( k => black, K => white ){$/}} = $square; }
+    $fen,
+    actions => class {
+	has Int $!r = 0;
+	has Int $!c = 0;
+	has Piece %!pieces{square};
+	method rank($/) { $!r++; $!c=0 }
+	method piece($/) {
+	    my $square = square::{('a'..'h')[$!c++] ~ (7-$!r)+1};
+	    @board[$square] = %(<p n b r q k> Z=> Pawn, Knight, Bishop, Rook, Queen, King){~$/.lc}.new(:color(~$/ ~~ /<upper>/ ?? white !! black));
+	    if $/ eq 'k'|'K' { %kings{%( k => black, K => white ){$/}} = $square; }
+	}
+	method empty-squares($/)    { $!c+=$/ }
+	method active-color($/)     { $turn = $/ eq 'w' ?? white !! black }
+	method half-move-clock($/)  { $half-moves-count = +$/ }
+	method en-passant($/)       { $en-passant = square::{$/} unless $/ eq '-' }
+	method castling($/)         {
+	    return if $/ eq '-';
+	    for (white) => rx/<[KQ]>/, (black) => rx/<[kq]>/ {
+		%castling-rights{.key} = Set[castling-rights].new:
+		%(<k q> Z=> kingside, queenside){$/.Str.comb(.value)».lc};
 	    }
-	    method empty-squares($/)    { $!c+=$/ }
-	    method active-color($/)     { $turn = $/ eq 'w' ?? white !! black }
-	    method half-move-clock($/)  { $half-moves-count = +$/ }
-	    method en-passant($/)       { $en-passant = square::{$/} unless $/ eq '-' }
-	    method castling($/)         { $castling-rights = Set[castling-rights].new: %(<K Q k q> Z=> castling-rights::{*}){$/.Str.comb} unless $/ eq '-' }
-	    method full-move-number($/) { $move-number = +$/ }
-	}.new
-    ;
-    self.bless: :%kings, :@board, :$turn, :$castling-rights, :$en-passant, :$half-moves-count, :$move-number;
+	}
+	method full-move-number($/) { $move-number = +$/ }
+    }.new;
+    self.bless: :%kings, :@board, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number, :$last-move;
 }
 
-submethod BUILD(:%!kings, :@!board, :$!turn, :$!castling-rights, :$!en-passant, :$!half-moves-count, :$!move-number) {}
+multi method new(::?CLASS $position, Move $move) {
+    my square %kings{color} = $position.kings<>;
+    my Piece @board[128]; @board[$_] = $position{$_} for square::{*};
+    my color $turn       = ¬$position.turn;
+    my Set[castling-rights] %castling-rights{color} = $position.castling-rights<>;
+    my en-passant-square $en-passant;
+    my UInt $half-moves-count = $position.half-moves-count + 1;
+    my UInt $move-number = $position.move-number;
+    $move-number++ if $position.turn ~~ black;
 
-method pass { 
+    given my $moving-piece = @board[$move.from] {
+	when King {
+	    if %castling-rights{$moving-piece.color} {
+		%castling-rights{$moving-piece.color} (-)= (kingside, queenside);
+	    }
+	    %kings{$position.turn} = $move.to;
+	}
+	when Rook {
+	    if %castling-rights{$moving-piece.color} {
+		if $move.from == h1|h8 {
+		    %castling-rights{$moving-piece.color} (-)= kingside;
+		} elsif $move.from == a1|a8 {
+		    %castling-rights{$moving-piece.color} (-)= queenside;
+		}
+	    }
+	}
+	when Pawn {
+	    $half-moves-count = 0;
+	    $en-passant = square($move.to - $moving-piece.offsets[0]) if $move ~~ BigPawnMove;
+	}
+	when !* {
+	    fail "there is no piece on square $move.from";
+	}
+    }
+    given $position{$move.to} {
+	when .defined && .color ~~ $position{$move.from} {
+	    fail "can't capture a piece of the same color";
+	}
+	when .defined {
+	    $half-moves-count = 0;
+	}
+    }
+    $move.move-pieces(@board);
+    ::?CLASS.bless:
+    :%kings,
+    :@board,
+    :$turn,
+    :%castling-rights,
+    :$en-passant,
+    :$half-moves-count,
+    :$move-number,
+    :last-move($move);
+}
+
+submethod BUILD(:%!kings, :@board, :$!turn, :%!castling-rights, :$!en-passant, :$!half-moves-count, :$!move-number, :$!last-move) {}
+
+method pass {
+    my Piece @board[128];
+    @board[.key] = .value for self.pairs;
+	
     self.bless:
-    :@!board,
+    :kings(%!kings<>),
+    :@board,
     :turn(¬$!turn),
-    :$!castling-rights,
+    :castling-rights(%!castling-rights<>),
     :$!en-passant,
     :$!half-moves-count,
-    :$!move-number
+    :$!move-number,
+    :last-move(Move)
 }
 
-method fen {
+method gist { self.fen }
+method fen returns Str {
     join ' ',
     do for 8,7...1 -> $r {
 	do for 'a'..'h' -> $c {
-	    my $piece = @!board[square::{"$c$r"}];
+	    my $piece = self{square::{"$c$r"}};
 	    $piece ?? $piece.symbol !! '1'
 	}.join
 	.subst(/1+/, { .chars }, :g)
     }.join("/"),
     $!turn eq white ?? 'w' !! 'b',
-    $!castling-rights ?? %(castling-rights::{*} Z=> <K Q k q>){$!castling-rights.keys}.sort.join !! '-',
+    (
+	%!castling-rights{white} ?? %(kingside, queenside Z=> <K Q>){%!castling-rights{white}.keys} !! '',
+	%!castling-rights{black} ?? %(kingside, queenside Z=> <k q>){%!castling-rights{black}.keys} !! ''
+    ).flat.sort.join.subst(/^$/, '-'),
     $!en-passant.defined ?? $!en-passant !! '-',
     $!half-moves-count,
     $!move-number
 }
 
-method moves(Bool :$legal = True, Piece :$piece, square :$square) {
+method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
+    my ($us, $them) = $!turn, ¬$!turn;
+    my @squares = $square ?? ($square,) !! square::{*};
+
+    #.<>.cache given (state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
     gather {
-
-    }
-
-}
-
-class Move {
-    #| A move really makes sense only with
-    #| a given chess position
-    has Chess::Position $.before;
-
-    has square ($.from, $.to);
-    method color returns color { $!before.turn }
-    method piece returns Piece { $!before!Chess::Position::board($!from) }
-    method SAN returns Str {...}
-    method LAN returns Str { "$!from$!to" }
-    method move-pieces(@board) { @board[$!to] = @board[$!from]:delete }
-    method after returns Chess::Position {
-	my square %kings{color} = $!before.Chess::Position::kings<>;
-	my Piece @board[128] =  $!before!Chess::Position::board<>;
-	my color $turn       = ¬$!before.turn;
-	my Set[castling-rights] $castling-rights = $!before.castling-rights<>;
-	my en-passant-square $en-passant = $!before.en-passant;
-	my UInt $half-moves-count = $!before.half-moves-count + 1;
-	my UInt $move-number = $!before.move-number;
-	$move-number++ if $!before.turn ~~ black;
-
-	given my $moving-piece = @board[$!from] {
-	    when King {
-		if $castling-rights {
-		    $castling-rights (-)= 
-		    ($!before.turn == white ?? (white-kingside, white-queenside) !! (black-kingside, black-queenside)).Set;
+	for @squares -> $from {
+	    next if self{$from}:!exists || self{$from}.color ~~ $them;
+	    my square $to;
+	    if self{$from} ~~ Pawn {
+		my $pawn = self{$from};
+		next if $piece.symbol ne 'Ø' && $piece !~~ Pawn;
+		$to = square($from + $pawn.offsets[0]);
+		if !self{$to} {
+		    if rank($to) == PROMOTION-RANK {
+			for Queen, Knight, Bishop, Rook -> $promotion {
+			    take Promotion.bless: :$from, :$to, :$promotion
+			}
+		    } else { take PawnMove.bless: :$from, :$to; }
+		    try $to = square($from + $pawn.offsets[1]);
+		    unless $! {
+			if rank($from) == %SECOND-RANK{$us} && !self{$to} {
+			    take BigPawnMove.bless: :$from, :$to;
+			}
+		    }
 		}
-		%kings{$!before.turn} = $!to;
-	    }
-	    when Rook {
-		if $castling-rights {
-		    if $!from == h1|h8 {
-			$castling-rights (-)=
-			($!before.turn == white ?? white-kingside !! black-kingside).Set;
-		    } elsif $!from == a1|a8 {
-			$castling-rights (-)=
-			($!before.turn == white ?? white-queenside !! black-queenside).Set;
+		for 2..^4 -> $j {
+		    try $to = square($from + $pawn.offsets[$j]);
+		    next if $!;
+		    if self{$to}.defined && self{$to}.color ~~ $them {
+			if rank($to) == PROMOTION-RANK {
+			    for Queen, Knight, Bishop, Rook -> $promotion {
+				take Promotion.bless(:$from, :$to, :$promotion) but capture;
+			    }
+			} else { take PawnMove.bless(:$from, :$to) but capture; }
+		    } elsif $!en-passant && $to ~~ $!en-passant {
+			take EnPassant.bless: :$from, :$to;
+		    }
+		}
+	    } else {
+		next if $piece.symbol ne 'Ø' && self{$from} !~~ $piece;
+		for self{$from}.offsets -> $offset {
+		    $to = $from;
+		    loop {
+			try $to = square($to + $offset);
+			last if $!;
+			if !self{$to} {
+			    take Move.bless: :$from, :$to;
+			} else {
+			    last if self{$to}.color ~~ $us;
+			    take Move.bless(:$from, :$to) but capture;
+			    last;
+			}
+			last if self{$from} ~~ King|Knight;
 		    }
 		}
 	    }
-	    when Pawn {
-		$half-moves-count = 0;
-	    }
-	    when !* {
-		fail "there is no piece on square $!from";
+	}
+	if $piece.symbol eq 'Ø' || $piece ~~ King {
+	    if $piece !~~ King || $square.defined && $square == %!kings{$us} {
+		if kingside ∈ %!castling-rights{$us} {
+		    my square $castling-from = %!kings{$us};
+		    my square $castling-to   = square($castling-from + 2);
+		    if 
+			!self{square($castling-from + 1)} &&
+			!self{$castling-to} &&
+			!self!attacked($them, %!kings{$us}) &&
+			!self!attacked($them, square($castling-from + 1)) &&
+			!self!attacked($them, $castling-to)
+		    {
+			take KingsideCastle.new: :from(%!kings{$us}), :to($castling-to)
+		    }
+		}
+		if queenside ∈ %!castling-rights{$us} {
+		    my square $castling-from = %!kings{$us};
+		    my square $castling-to   = square($castling-from - 2);
+		    if 
+			!self{square($castling-from - 1)} &&
+			!self{$castling-to} &&
+			!self!attacked($them, %!kings{$us}) &&
+			!self!attacked($them, square($castling-from - 1)) &&
+			!self!attacked($them, $castling-to)
+		    {
+			take QueensideCastle.new: :from(%!kings{$us}), :to($castling-to)
+		    }
+		}
 	    }
 	}
-	given @board[$!to] {
-	    when .defined && .color ~~ self.color {
-		fail "can't capture a piece of the same color";
-	    }
-	    when .defined {
-		$half-moves-count = 0;
-	    }
-	}
-	self.move-pieces(@board);
-	Chess::Position.bless:
-	    :%kings,
-	    :@board,
-	    :$turn,
-	    :$castling-rights,
-	    :$en-passant,
-	    :$half-moves-count,
-	    :$move-number;
-    }
-}
-
-class Promotion is Move {
-    has Piece $.promotion;
-    method LAN { self.Move::LAN ~ $!promotion.symbol }
-    method move-pieces(@board) {
-	@board[$.from]:delete;
-	@board[$.to] = $!promotion;
-    }
-}
-
-class BigPawnMove is Move {
-    method SAN { ~$.to }
-}
-
-class EnPassant is Move {
-    method SAN { $.from.substr(0, 1) ~ 'x' ~ $.before.en-passant }
-    method move-pieces(@board) {
-	self.Move::move-pieces(@board);
-	@board[self.en-passant + ($.before.turn == white ?? -16 !! +16)]:delete;
-    }
-}
-
-# Castling here will work only for standard chess,
-# not Fischer random.
-role Castle is Move {
-    method from { self.color ~~ white ?? e1 !! e8 }
-    method king-step returns Int {...}
-    method king-rook-distance returns UInt {...}
-    method SAN {...}
-    method move-pieces(@board) {
-	self.Move::move-pieces(@board);
-	@board[self.from + self.king-step] =
-	@board[self.from + self.king-step * self.king-rook-distance]:delete;
-    }
-}
-class KingSideCastle does Castle {
-    method to   { self.color ~~ white ?? g1 !! g8 }
-    method king-step { +1 }
-    method king-rook-distance { 3 }
-    method SAN { 'O-O' }
-}
-class QueenSideCastle does Castle {
-    method to   { self.color ~~ white ?? c1 !! c8 }
-    method king-step { -1 }
-    method king-rook-distance { 4 }
-    method SAN { 'O-O-O' }
+    }.grep:
+	!$legal || (%!kings{$us}:!exists) ?? * !! { ! self.new(self, $_).pass.isCheck }
 }
 
 method !attacked(color $color, square $square, Bool :$verbose) {
     constant $RAYS = Blob[int8].new:
-	    17, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 15, 0, 0, 17, 0, 0, 0,
-	    0, 0, 16, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 17, 0, 0, 0, 0, 16, 0, 0, 0,
-	    0, 15, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 0, 0,
-	    0, 0, 0, 17, 0, 0, 16, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0,
-	    16, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 16, 15, 0, 0, 0, 0,
-	    0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0,
-	    0, 0, 0, 0, -15, -16, -17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -15, 0,
-	    -16, 0, -17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -15, 0, 0, -16, 0, 0, -17,
-	    0, 0, 0, 0, 0, 0, 0, 0, -15, 0, 0, 0, -16, 0, 0, 0, -17, 0, 0, 0, 0, 0,
-	    0, -15, 0, 0, 0, 0, -16, 0, 0, 0, 0, -17, 0, 0, 0, 0, -15, 0, 0, 0, 0,
-	    0, -16, 0, 0, 0, 0, 0, -17, 0, 0, -15, 0, 0, 0, 0, 0, 0, -16, 0, 0, 0,
-	    0, 0, 0, -17;
+    17, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 15, 0, 0, 17, 0, 0, 0,
+    0, 0, 16, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 17, 0, 0, 0, 0, 16, 0, 0, 0,
+    0, 15, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 0, 0,
+    0, 0, 0, 17, 0, 0, 16, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0,
+    16, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 16, 15, 0, 0, 0, 0,
+    0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0,
+    0, 0, 0, 0, -15, -16, -17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -15, 0,
+    -16, 0, -17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -15, 0, 0, -16, 0, 0, -17,
+    0, 0, 0, 0, 0, 0, 0, 0, -15, 0, 0, 0, -16, 0, 0, 0, -17, 0, 0, 0, 0, 0,
+    0, -15, 0, 0, 0, 0, -16, 0, 0, 0, 0, -17, 0, 0, 0, 0, -15, 0, 0, 0, 0,
+    0, -16, 0, 0, 0, 0, 0, -17, 0, 0, -15, 0, 0, 0, 0, 0, 0, -16, 0, 0, 0,
+    0, 0, 0, -17;
     my @attackers;
     for square::{*} -> $i {
-	my $piece = @!board[$i];
+	my $piece = self{$i};
 	if !$piece || $piece.color !~~ $color {
 	    next;
 	}
@@ -322,7 +309,7 @@ method !attacked(color $color, square $square, Bool :$verbose) {
 	    my $j = $i + $offset;
 	    my Bool $blocked = False;
 	    while $j !== $square {
-		if @!board[$j] {
+		if self{square($j)} {
 		    $blocked = True;
 		    last;
 		}
@@ -341,10 +328,47 @@ method !attacked(color $color, square $square, Bool :$verbose) {
 }
 method attackers(square $square, color $attackedBy?) {
     self!attacked:
-	$attackedBy.defined ?? $attackedBy !! $!turn,
-	$square,
-	:verbose
+    $attackedBy.defined ?? $attackedBy !! $!turn,
+    $square,
+    :verbose
     ;
+}
+
+method !isKingAttacked(color $color --> Bool) {
+    %!kings{$color}:exists ?? self!attacked(¬$color, %!kings{$color}) !! False
+}
+method isCheck     returns Bool {  self!isKingAttacked($!turn) }
+method inCheck     returns Bool {  self.isCheck }
+method isCheckmate returns Bool {  self.isCheck && self.moves.elems == 0 }
+method isStalemate returns Bool { !self.isCheck && self.moves.elems == 0 }
+
+method isInsufficientMaterial returns Bool {
+    my UInt %pieces{Piece} = (Pawn, Bishop, Knight, Rook, Queen, King) X=> 0;
+    my @bishops;
+    my UInt ($numPieces, $squareColor) = 0, 0;
+    for square::{*}.sort(*.value) -> $square {
+	$squareColor = (&rank, &file)».($square).sum % 2;
+	if self{$square}:exists {
+	    my $piece = self{$square};
+	    %pieces{$piece.WHAT}++;
+	    if $piece ~~ Bishop {
+		@bishops.push: $squareColor;
+	    }
+	    $numPieces++
+	}
+    }
+    if $numPieces == 2 {
+	return True;
+    } elsif $numPieces == 3 && (%pieces{Bishop} == 1 || %pieces{Knight} == 1) {
+	return True;
+    } elsif $numPieces == %pieces{Bishop} + 2 {
+	my UInt $sum = 0;
+	$sum += $_ for @bishops;
+	if $sum == 0|@bishops.elems {
+	    return True
+	}
+    }
+    return False;
 }
 
 method ascii {
@@ -354,7 +378,7 @@ method ascii {
 	state $r;
 	$s ~= " {8 - $r++} |";
 	for @row -> $square {
-	    my $piece = @!board[$square];
+	    my $piece = self{$square};
 	    $s ~= " {$piece ?? $piece.symbol !! '.'} ";
 	}
 	$s ~= "|\n";
@@ -364,6 +388,7 @@ method ascii {
     return $s;
 
 }
+
 # http://hgm.nubati.net/book_format.html
 method uint returns uint64 {
     constant $Random64 = Blob[uint64].new: map *.parse-base(16), <
@@ -572,31 +597,30 @@ method uint returns uint64 {
 
     my uint64 ($piece, $castle, $en-passant, $turn);
 
-    for @!board.pairs {
-	next unless .value.defined;
+    for self.pairs {
 	my ($rank, $file) = { 7 - rank($^k), file($^k) }(square(.key));
 	my $kind-of-piece = 2*%( <p n b r q k > Z=> ^6 ){.value.symbol.lc} + %( black, white Z=> ^2 ){.value.color};
 	my $offset-piece = 64 * $kind-of-piece + 8 * $rank + $file;
 	$piece +^= RandomPiece[$offset-piece];
     }
 
-    if white-kingside  ∈ $!castling-rights { $castle +^= RandomCastle[0] }
-    if white-queenside ∈ $!castling-rights { $castle +^= RandomCastle[1] }
-    if black-kingside  ∈ $!castling-rights { $castle +^= RandomCastle[2] }
-    if black-queenside ∈ $!castling-rights { $castle +^= RandomCastle[3] }
+    if kingside  ∈ %!castling-rights{white} { $castle +^= RandomCastle[0] }
+    if queenside ∈ %!castling-rights{white} { $castle +^= RandomCastle[1] }
+    if kingside  ∈ %!castling-rights{black} { $castle +^= RandomCastle[2] }
+    if queenside ∈ %!castling-rights{black} { $castle +^= RandomCastle[3] }
 
     if $!en-passant.defined {
 	my &up-or-down = $!turn == white ?? *+16 !! *-16;
 	my @left-or-right;
 	given file($!en-passant) {
-	    when 'a' { @left-or-right = *+1 }
-	    when 'h' { @left-or-right = *-1 }
+	    when 0 { @left-or-right = *+1 }
+	    when 7 { @left-or-right = *-1 }
 	    default  { @left-or-right = *-1, *+1 }
 	}
 	for @left-or-right X∘ &up-or-down -> &direction {
-	    if my $left-or-right = @!board[&direction($!en-passant)] {
+	    if my $left-or-right = self{square(&direction($!en-passant))} {
 		if $left-or-right ~~ Pawn and $left-or-right.color == $!turn {
-		    $en-passant +^= RandomEnPassant[%( 'a'..'h' Z=> ^8 ){file($!en-passant)}];
+		    $en-passant +^= RandomEnPassant[file($!en-passant)];
 		    last;
 		}
 	    }
@@ -606,7 +630,7 @@ method uint returns uint64 {
     if $!turn == white { $turn +^= RandomTurn[0] }
 
     return my uint64 $ = $piece +^ $castle +^ $en-passant +^ $turn;
-
 }
 
-# vi: ft=raku nowrap nu shiftwidth=4
+
+# vi: shiftwidth=4 nu nowrap

@@ -1,5 +1,5 @@
 unit module Chess::Pieces;
-use Chess::Board;
+use Chess::Colors;
 
 subset Symbol of Str where /^ :i <[Øprnbqk]> $/;
 role Piece is export { method symbol returns Symbol { 'Ø' } }
