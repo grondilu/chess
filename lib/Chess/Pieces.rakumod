@@ -23,8 +23,6 @@ role Piece[Symbol $symbol, UInt $mask] is export {
   method offsets {...}
   multi method symbol(Piece:D:) { ($!color ~~ white ?? *.uc !! *.lc)($symbol) }
   multi method symbol(Piece:U:) { $symbol }
-  multi method gist(::?CLASS:D:) { $!color ~ " " ~ %(:p<pawn>, :n<knight>, :b<bishop>, :r<rook>, :q<queen>, :k<king>){$symbol} }
-  multi method gist(::?CLASS:U:) { %(:p<pawn>, :n<knight>, :b<bishop>, :r<rook>, :q<queen>, :k<king>){$symbol} }
 }
 
 class Pawn does Piece['p',  1] is export {
