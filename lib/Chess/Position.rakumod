@@ -171,7 +171,7 @@ method fen returns Str {
 
 method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
     my ($us, $them) = $!turn, ¬$!turn;
-    my @squares = $square ?? ($square,) !! square::{*};
+    my @squares = $square.defined ?? ($square,) !! square::{*};
 
     #.<>.cache given (state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
     gather {
