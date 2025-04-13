@@ -173,7 +173,7 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
     my ($us, $them) = $!turn, ¬$!turn;
     my @squares = $square.defined ?? ($square,) !! square::{*};
 
-    #.<>.cache given (state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
+    .<>.cache given (state %){self.uint.base(36)}{$legal}{$piece.symbol}{$square // 'all'} //=
     gather {
 	for @squares -> $from {
 	    next if self{$from}:!exists || self{$from}.color ~~ $them;
