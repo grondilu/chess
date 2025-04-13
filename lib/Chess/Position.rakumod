@@ -121,7 +121,7 @@ multi method new(::?CLASS $position, Move $move) {
 	}
     }
     $move.move-pieces(@board);
-    ::?CLASS.bless:
+    self.bless:
     :%kings,
     :@board,
     :$turn,
