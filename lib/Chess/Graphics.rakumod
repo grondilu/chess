@@ -5,6 +5,8 @@ use Chess::Board;
 use Term::termios;
 use Terminal::Size;
 
+use Kitty;
+
 our constant $square-size = 60;
 
 # using dynamic variables for
@@ -47,11 +49,8 @@ our sub get-placement-parameters(square $square) {
     )
 }
 
-our sub show(Chess::Position $position) returns UInt is export {
-    use Kitty;
+our sub show(Chess::Position $position, UInt :$placement-id = Kitty::ID-RANGE.pick, UInt :$z = 0) returns UInt is export {
     once Kitty::transmit-data;
-
-    my $checkerboard-placement-id = Kitty::ID-RANGE.pick;
 
     my $*terminal-size = terminal-size;
     my ($*window-height, $*window-width) = Chess::Graphics::get-window-size;
@@ -59,8 +58,8 @@ our sub show(Chess::Position $position) returns UInt is export {
     say Kitty::APC
     a => 'p',
     i => %Kitty::ID<checkerboard>,
-    p => $checkerboard-placement-id,
-    z => 0,
+    p => $placement-id,
+    :$z,
     q => 1;
 
     for square::{*} -> $square {
@@ -68,17 +67,17 @@ our sub show(Chess::Position $position) returns UInt is export {
 	    print Kitty::APC
 	    a => 'p',
 	    i => %Kitty::ID{$piece.symbol},
-	    p => $checkerboard-placement-id + 1 + $square,
+	    p => $placement-id + 1 + $square,
 	    P => %Kitty::ID<checkerboard>,
-	    Q => $checkerboard-placement-id,
+	    Q => $placement-id,
 	    |Chess::Graphics::get-placement-parameters($square),
-	    z => 1,
+	    z => $z + 1,
 	    q => 1
 	    ;
 	}
     }
 
-    return $checkerboard-placement-id;
+    return $placement-id;
 }
 
 our sub input-moves(Chess::Position $from) {
