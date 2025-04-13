@@ -1,6 +1,8 @@
 unit module CSI;
 
-our sub get-csi(Str $csi?) {
+our class Error does X::IO is export {}
+
+our sub get-csi(Str $csi?) is export {
     use Term::termios;
 
     my $saved_termios := Term::termios.new(fd => 1).getattr;
