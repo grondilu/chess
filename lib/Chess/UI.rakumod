@@ -7,6 +7,24 @@ use Term::termios;
 use Terminal::Size;
 use CSI;
 
+sub enable-mouse-reporting {
+    print "\e[?1016h"; # Enable SGR mode for better precision
+    print "\e[?1002h"; # Enable button-event tracking (press/release)
+    print "\e[?1003h"; # Enable all mouse events (motion)
+}
+sub disable-mouse-reporting {
+    print "\e[?1003l";
+    print "\e[?1002l";
+    print "\e[?1016l";
+}
+
+sub play-sound(Str $sound) {
+    given try run <play -q ->, :in {
+	.in.write: "resources/sounds/$sound.ogg".IO.slurp(:bin);
+	.in.close;
+    }
+}
+    
 our sub input-moves(Chess::Position $from) is export {
     use Kitty;
     my $saved-termios := Term::termios.new(fd => 1).getattr;
@@ -27,18 +45,16 @@ our sub input-moves(Chess::Position $from) is export {
     "\e7",                   # save state
     "\e[?47h\e[2J",          # save the screen and erase it
     "\e[?25l";               # make cursor invisible
-    LEAVE {
-	print join '',
+    LEAVE print join '',
 	"\e[?25h",           # make cursor visible
 	"\e[?47l",           # restore the screen
 	"\e8"                # restore state
 	;
-    }
 
     # save cursor position
     print "\e[s";
     # display the position
-    my $placement = show $from;
+    my $placement = show $from, ;
     my UInt $z = 0;
     say "\rmake your moves with the mouse";
     say "\rany key to quit";
@@ -75,23 +91,15 @@ our sub input-moves(Chess::Position $from) is export {
     my $csi-catching = start {
 	use CSI;
 
-	print "\e[?1016h"; # Enable SGR mode for better precision
-	print "\e[?1002h"; # Enable button-event tracking (press/release)
-	print "\e[?1003h"; # Enable all mouse events (motion)
-	LEAVE {
-	    print "\e[?1003l";
-	    print "\e[?1002l";
-	    print "\e[?1016l";
-	}
+	enable-mouse-reporting;
+	LEAVE disable-mouse-reporting;
 
 	loop {
 	    try my $csi = get-csi;
 	    if $! {
 		$mouse-and-keyboard-reporting.emit: CSI::Error;
 		# disable mouse tracking and sink stdin for one second to wipe potential uncaught signals
-		print "\e[?1003l";
-		print "\e[?1002l";
-		print "\e[?1016l";
+		disable-mouse-reporting;
 		Promise.anyof: start { loop { sink $*IN.read(1) } }, Promise.in(1);
 		last;
 	    }
@@ -165,6 +173,10 @@ our sub input-moves(Chess::Position $from) is export {
 				    $selected-square = square;
 				}
 				elsif $square == @moves».to.any {
+				    start {
+					with $position{$square} { play-sound "Capture"; }
+					else { play-sound "Move"; }
+				    }
 				    $board-state = IDLE;
 				    print "\rplacing {$position{$selected-square}.symbol} on $square\e[K";
 				    $position .= new: $position, @moves.first( { .to == $square } );
@@ -172,7 +184,7 @@ our sub input-moves(Chess::Position $from) is export {
 				    print "\e[u";
 				    #print Kitty::APC a => 'd', d => 'i', p => $placement, i => %Kitty::ID<checkerboard>, q => 1;
 				    $z+=13;
-				    show $position, :placement-id($placement) :$z;
+				    show $position, :placement-id($placement) :$z, :no-screen-measure;
 				}
 				else {
 				    $selected-square = $square;
