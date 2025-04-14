@@ -11,7 +11,6 @@ our constant $square-size = 100;
 
 our sub get-window-size {
     use CSI;
-    print "\e[14t";
 
     if get-csi("\e[14t") ~~ / \e '[4;' (\d+) ** 2 % \; / { return $0».Int; }
     else { fail "unexpected response from stdin" }
