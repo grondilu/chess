@@ -389,6 +389,7 @@ method ascii {
 
 }
 
+method WHICH { self.uint.base(36) }
 # http://hgm.nubati.net/book_format.html
 method uint returns uint64 {
     constant $Random64 = Blob[uint64].new: map *.parse-base(16), <
