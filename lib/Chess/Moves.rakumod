@@ -22,6 +22,11 @@ class Move {
 	7-rank($!to),
 	file($!to)
     }
+    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2$/) {
+	note $/[0];
+	my square ($from, $to) = $/[0].map: { square::{.Str} };
+	self.bless: :$from, :$to
+    }
     multi method new(UInt $int) {
 	my $to-file   =  $int +& 0b0_000_000_000_000_111      ;
 	my $to-rank   = ($int +& 0b0_000_000_000_111_000) +> 3;
