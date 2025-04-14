@@ -6,6 +6,8 @@ class Move is export {...}
 subset KnightMove of Move is export where { Knight.attacks(119 + .to - .from) };
 role capture is export {}
 
+class Promotion {...}
+
 class Move {
     has square ($.from, $.to);
     method LAN { "$!from$!to" }
@@ -22,10 +24,12 @@ class Move {
 	7-rank($!to),
 	file($!to)
     }
-    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2$/) {
+    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2 <promotion=[nrbq]>? $/) {
 	note $/[0];
 	my square ($from, $to) = $/[0].map: { square::{.Str} };
-	self.bless: :$from, :$to
+	with $<promotion> {
+	    Promotion.new: :$from, :$to, :promotion(%(<n r b q> Z=> Knight, Rook, Bishop, Queen){$<promotion>});
+	} else { self.bless: :$from, :$to }
     }
     multi method new(UInt $int) {
 	my $to-file   =  $int +& 0b0_000_000_000_000_111      ;
