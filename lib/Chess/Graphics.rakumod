@@ -2,9 +2,6 @@ unit module Chess::Graphics;
 use Chess;
 use Chess::Board;
 
-use Term::termios;
-use Terminal::Size;
-
 use Kitty;
 
 our constant $square-size = 100;
@@ -13,26 +10,11 @@ our constant $square-size = 100;
 # terminal and window sizes
 
 our sub get-window-size {
-    ENTER my $saved_termios := Term::termios.new(fd => 1).getattr;
-    LEAVE $saved_termios.setattr: :DRAIN;
-    my $termios := Term::termios.new(fd => 1).getattr;
-    $termios.makeraw;
-
-    $termios.setattr(:DRAIN);
-
+    use CSI;
     print "\e[14t";
 
-    if $*IN.read(4) ~~ Blob.new: "\e[4;".comb(/./)».ord {
-	my Buf $buf .= new;
-	loop {
-	    my $c = $*IN.read(1);
-	    $buf ~= $c;
-	    last if $c[0] ~~ 't'.ord;
-	}
-	if $buf.decode ~~ / (\d+) ** 2 % \; / {
-	    return $0».Int;
-	} else { fail "unexpected response from stdin" }
-    } else { fail "could not read stdin" }
+    if get-csi("\e[14t") ~~ / \e '[4;' (\d+) ** 2 % \; / { return $0».Int; }
+    else { fail "unexpected response from stdin" }
 }
 
 our sub get-placement-parameters(square $square) {
@@ -77,8 +59,10 @@ multi show($position, :$placement-id, :$z, :$no-screen-measure!) returns UInt is
 }
 
 multi show($position, :$placement-id = Kitty::ID-RANGE.pick, :$z = 0) returns UInt is export {
+    use Terminal::Size;
+
     my $*terminal-size = terminal-size;
-    my ($*window-height, $*window-width) = Chess::Graphics::get-window-size;
+    my ($*window-height, $*window-width) = get-window-size;
 
     samewith $position, :$placement-id, :$z, :no-screen-measure;
 }
