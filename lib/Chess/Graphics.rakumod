@@ -9,13 +9,6 @@ our constant $square-size = 100;
 # using dynamic variables for
 # terminal and window sizes
 
-our sub get-window-size {
-    use CSI;
-
-    if get-csi("\e[14t") ~~ / \e '[4;' (\d+) ** 2 % \; / { return $0».Int; }
-    else { fail "unexpected response from stdin" }
-}
-
 our sub get-placement-parameters(square $square) {
     my ($rank, $file) = rank($square), file($square);
     my ($rows, $columns) = .rows, .cols given $*terminal-size;
@@ -59,9 +52,10 @@ multi show($position, :$placement-id, :$z, :$no-screen-measure!) returns UInt is
 
 multi show($position, :$placement-id = Kitty::ID-RANGE.pick, :$z = 0) returns UInt is export {
     use Terminal::Size;
+    use CSI;
 
     my $*terminal-size = terminal-size;
-    my ($*window-height, $*window-width) = get-window-size;
+    my ($*window-height, $*window-width) = CSI::get-window-size;
 
     samewith $position, :$placement-id, :$z, :no-screen-measure;
 }
