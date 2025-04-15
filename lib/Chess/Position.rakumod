@@ -30,6 +30,9 @@ use Chess::Colors;
 use Chess::Pieces;
 use Chess::Moves;
 
+subset Check     of ::?CLASS is export where *.isCheck;
+subset Checkmate of    Check is export where { .moves == 0 };
+
 constant startpos = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1};
 
 enum castling-rights <kingside queenside>;
