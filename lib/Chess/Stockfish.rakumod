@@ -45,7 +45,7 @@ method start {
     return $start;
 }
 
-method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 10_000, :$cache? --> Promise) {
+method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500, :$cache? --> Promise) {
     state %cache;
     my Promise $best-move .= new;
     with $position {
@@ -73,7 +73,8 @@ method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 10_000, 
 		%cache{$position} = $move with $cache;
 		done;
 	    } elsif /'score mate 0'/ {
-		$best-move.keep: Nil;
+		# this is checkmate so there's no best move
+		$best-move.break;
 		done
 	    }
 	}
@@ -88,15 +89,18 @@ method self-play(UInt :$n = 10) {
     sub white-setup {
 	self.set-threads: 4;
 	self.set-skill-level: 20;
+	self.best-move: :@moves, :movetime(10_000);
     }
     sub black-setup {
 	self.set-threads: 1;
-	self.set-skill-level: 10;
+	self.set-skill-level: 1;
+	self.best-move: :@moves, :movetime(500);
     }
-    for ^$n {
+    FULL-MOVE: for ^$n {
 	for &black-setup, &white-setup {
-	    .();
-	    @moves.push: .LAN given await self.best-move: :@moves;
+	    try my $best-move = .().result;
+	    last FULL-MOVE if $!;
+	    @moves.push: $best-move.LAN;
 	}
     }
 
@@ -105,8 +109,8 @@ method self-play(UInt :$n = 10) {
 	gather for @moves {
 	    state Chess::Position $position .= new;
 	    my $move = Move.new($_);
-	    note $move.LAN;
-	    take move-to-SAN $move, $position;
+	    try take move-to-SAN $move, $position;
+	    fail "could not get SAN from move {$move.LAN} in position {$position.fen}" if $!;
 	    $position .= new: $position, $move;
 	}.rotor(2, :partial)
 	.map: *.join(q{ })
