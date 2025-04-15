@@ -11,6 +11,7 @@ class Promotion {...}
 class Move {
     has square ($.from, $.to);
     method LAN { "$!from$!to" }
+    method gist { self.LAN }
     multi method piece-type(KnightMove:) { Knight }
     method move-pieces(@board) { @board[$!to] = @board[$!from]:delete }
     multi method pseudo-SAN(capture:) {
@@ -25,7 +26,6 @@ class Move {
 	file($!to)
     }
     multi method new(Str $ where /^(<[a..h]><[1..8]>)**2 <promotion=[nrbq]>? $/) {
-	note $/[0];
 	my square ($from, $to) = $/[0].map: { square::{.Str} };
 	with $<promotion> {
 	    Promotion.new: :$from, :$to, :promotion(%(<n r b q> Z=> Knight, Rook, Bishop, Queen){$<promotion>});
@@ -80,7 +80,7 @@ class EnPassant is PawnMove is export {
 
 class Promotion is PawnMove is export {
     has Piece:U $.promotion;
-    method LAN { self.Move.LAN ~ $!promotion.symbol.lc }
+    method LAN { self.Move::LAN ~ $!promotion.symbol.lc }
     method pseudo-SAN { self.PawnMove::pseudo-SAN ~ '=' ~ $!promotion.symbol.uc; }
     method move-pieces(@board) {
 	@board[self.to] = $.promotion.new: :color(.color) given
