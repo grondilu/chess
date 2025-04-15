@@ -118,3 +118,5 @@ The class `Chess::Book` can be used to read such books.
  - [ ] game database management
  - [ ] translate [Chess.js](https://github.com/jhlywa/chess.js/tree/master)
  - [ ] read and write [Polyglot books](https://www.chessprogramming.org/PolyGlot)
+ - [ ] make the board square as tall as the cursor by default
+ - [ ] clean-up and update README
