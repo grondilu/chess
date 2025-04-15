@@ -29,21 +29,22 @@ our sub getDisambiguator(Move $move, Chess::Position $position) {
     } else { return ''; }
 }
 
-proto move-to-SAN(Move $move, Chess::Position $position) returns SAN is export {
-    {*} ~ do given Chess::Position.new($position, $move) {
-	when    .isCheck     { '+' }
-	when    .isCheckmate { '#' }
+sub move-to-SAN(Move $move, Chess::Position $position) returns SAN is export {
+    do given $position.moves.first({ .LAN eq $move.LAN }) {
+	when PawnMove|Castle { .pseudo-SAN }
+	default {
+	    $position{$move.from}.symbol.uc ~
+	    getDisambiguator($move, $position) ~
+	    ($position{$move.to}:exists ?? 'x' !! '') ~
+	    $move.to;
+	}
+    } ~ do given Chess::Position.new($position, $move) {
+	when    Check     { '+' }
+	when    Checkmate { '#' }
 	default              {  '' }
     }
 }
-multi move-to-SAN(PawnMove $move, $position) { $move.pseudo-SAN }
-multi move-to-SAN(Castle   $move, $position) { $move.pseudo-SAN }
-multi move-to-SAN($move, $position) {
-    $position{$move.from}.symbol.uc ~
-    getDisambiguator($move, $position) ~
-    ($position{$move.to}:exists ?? 'x' !! '') ~
-    $move.to;
-}
+
 sub move-from-SAN(SAN $move, $position) returns Move is export {
     $position
 	.moves
@@ -52,4 +53,4 @@ sub move-from-SAN(SAN $move, $position) returns Move is export {
 }
 
 
-# vi: set shiftwdith=4 nu
+# vi: set shiftwidth=4 nu
