@@ -44,6 +44,26 @@ has en-passant-square $.en-passant;
 has UInt ($.half-moves-count, $.move-number);
 has Move $.last-move;
 
+sub infix:</>(Move $move, ::?CLASS $position) returns Move is export {
+    use Chess::Board;
+    given $position{$move.from} {
+	when King {
+	    if file($move.from) == file(e1) {
+		given file($move.to) {
+		    when file(g1) { return KingsideCastle.new: $move.LAN }
+		    when file(c1) { return QueensideCastle.new: $move.LAN }
+		}
+	    }
+	}
+	when Pawn {
+	    if abs(rank($move.to) - rank($move.from)) == 2                             { return BigPawnMove.new: $move.LAN }
+	    elsif file($move.to) !== file($move.from) && ($position{$move.to}:!exists) { return EnPassant.new: $move.LAN   }
+	    elsif rank($move.to) == PROMOTION-RANK                                     { return Promotion.new: $move.LAN   }
+	}
+    }
+    return $move;
+}
+
 multi method new(Str $fen = startpos) {
     use Chess::FEN;
     my square %kings{color};
@@ -81,7 +101,8 @@ multi method new(Str $fen = startpos) {
     self.bless: :%kings, :@board, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number, :$last-move;
 }
 
-multi method new(::?CLASS $position, Move $move) {
+multi method new(::?CLASS $position, Move $move, Bool :$recursed = False) {
+    return self.new: $position, $move/$position, :recursed unless $recursed;
     my square %kings{color} = $position.kings<>;
     my Piece @board[128]; @board[$_] = $position{$_} for square::{*};
     my color $turn       = ¬$position.turn;
