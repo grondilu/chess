@@ -7,6 +7,13 @@ use Chess::Board;
 
 submethod TWEAK { self.start-decoder }
 
+method detect-window-size {
+    # see XTWINOPS in https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+    my &response = rx/ ^ \e \[ 4\; (\d+) ** 2 % \; t $ /;
+    self.query-terminal("\e[14t", &response).then:
+    { ~.result ~~ &response ?? $0».Int !! Empty }
+}
+
 sub play-sound(Str $sound) {
     given try run <play -q ->, :in {
 	.in.write: "resources/sounds/$sound.ogg".IO.slurp(:bin);
@@ -143,7 +150,9 @@ method input-moves(Chess::Position $from) is export {
 			    }
 			}
 		    }
-		    elsif $position{$square}:exists && $position{$square}.color ~~ $position.turn { print "\e]22;hand\e\\" }
+		    elsif $state ~~ IDLE && ($position{$square}:exists) && $position{$square}.color ~~ $position.turn
+			or $state ~~ ONE-SQUARE-IS-SELECTED && $square == $position.moves(:square($selected-square))».to.any 
+		    { print "\e]22;hand\e\\" }
 		    else { print "\e]22;not-allowed\e\\\r{.raku}\e[K" }
 		} else { print "\e]22;not-allowed\e\\" }
 	    }
