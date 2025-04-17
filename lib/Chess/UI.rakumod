@@ -1,22 +1,11 @@
-unit module Chess::UI;
+use Terminal::LineEditor::RawTerminalInput;
+unit class Chess::UI does Terminal::LineEditor::RawTerminalIO does Terminal::LineEditor::RawTerminalUtils;
+
 use Chess::Graphics;
 use Chess::Position;
 use Chess::Board;
-use Term::termios;
 
-use Terminal::Size;
-use CSI;
-
-sub enable-mouse-reporting {
-    print "\e[?1016h"; # Enable SGR mode for better precision
-    print "\e[?1002h"; # Enable button-event tracking (press/release)
-    print "\e[?1003h"; # Enable all mouse events (motion)
-}
-sub disable-mouse-reporting {
-    print "\e[?1003l";
-    print "\e[?1002l";
-    print "\e[?1016l";
-}
+submethod TWEAK { self.start-decoder }
 
 sub play-sound(Str $sound) {
     given try run <play -q ->, :in {
@@ -25,219 +14,145 @@ sub play-sound(Str $sound) {
     }
 }
     
-our sub input-moves(Chess::Position $from) is export {
+method input-moves(Chess::Position $from) is export {
+
     use Kitty;
-    my $saved-termios := Term::termios.new(fd => 1).getattr;
-    LEAVE $saved-termios.setattr: :DRAIN;
+    use Chess::Board;
+    use Chess::Pieces;
 
-    my $termios := Term::termios.new(fd => 1).getattr;
-    $termios.makeraw;
-    $termios.setattr: :DRAIN;
+    use Terminal::ANSI;
 
-    my $*terminal-size = terminal-size;
-    my ($*window-height, $*window-width) = CSI::get-window-size;
+    my Chess::Position $position .= new: $from.fen;
 
-    # See :
-    # =item `man 4 consoles_codes`
-    # =item L<ANSI Escape Codes|https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797>
-    # =item L<XTerm control sequences|https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
-    print join '',
-    "\e7",                   # save state
-    "\e[?47h\e[2J",          # save the screen and erase it
-    "\e[?25l";               # make cursor invisible
-    LEAVE print join '',
-	"\e[?25h",           # make cursor visible
-	"\e[?47l",           # restore the screen
-	"\e8"                # restore state
-	;
+    my $*square-size = 64;
+
+    self.enter-raw-mode;
+    LEAVE self.leave-raw-mode;
+
+    my ($*rows, $*cols) = %*ENV<LINES COLUMNS>;
+    without $*rows|$*cols { ($*rows, $*cols) = await self.detect-terminal-size; }
+    my ($*window-height, $*window-width) = await self.detect-window-size;
 
     # save cursor position
-    print "\e[s";
-    # display the position
-    my $placement = show $from, ;
-    my UInt $z = 0;
-    say "\rmake your moves with the mouse";
-    say "\rany key to quit";
+    my @cursor = await self.detect-cursor-pos;
 
-    class Mouse {
-	class Button {
-	    has Bool $.is-pressed handles <Bool>;
-	    method press   { $!is-pressed = True }
-	    method release { $!is-pressed = False }
-	}
-	has Button ($.left, $.right);
-	submethod BUILD { $!left.=new; $!right.=new }
-	class Event {
-	    has UInt(Cool) ($.x, $.y); 
-	    method isInsideChessboard returns Bool { $!x&$!y ~~ 0..(8*$Chess::Graphics::square-size) }
-	}
-	class Click   is Event { }
-	class Release is Event { }
-	class Move    is Event { }
-    }
+    hide-cursor;
+    LEAVE { show-cursor; print "\e]22;\e\\" }
 
-    enum State <
-	IDLE
-	ONE-SQUARE-IS-SELECTED
-    >;
+    my Int $z = 0;
+    my UInt $placement-id = Kitty::ID-RANGE.pick;
 
-    my Mouse $mouse .= new;
-    my State $board-state = IDLE;
+    print "\e]22;>wait\e\\";
+    # save cursor position (in terminal)
+    print "\e7";
+    sub show-position { 
+	print "\e8";
+	show $position, :$placement-id, :$z, :no-screen-measure;
+	$z += 3; # supper impose next placement with some margin
+    }();
+    print "\e]22;<\e\\";
 
+    my @upper-left = (@cursor[1]-1) * ($*window-width div $*cols), (@cursor[0]-1) * ($*window-height div $*rows);
+
+    self.set-mouse-event-mode: MouseAnyEvents;
+    LEAVE self.set-mouse-event-mode: MouseNoEvents;
+
+    # SGR reporting
+    print "\e[?1016h";
+    LEAVE print "\e[?1016l";
+
+    my enum State <IDLE ONE-SQUARE-IS-SELECTED>;
+    my State $state = IDLE;
     my square $selected-square;
 
-    my Supplier $mouse-and-keyboard-reporting .= new;
-
-    my $csi-catching = start {
-	use CSI;
-
-	enable-mouse-reporting;
-	LEAVE disable-mouse-reporting;
-
-	loop {
-	    try my $csi = get-csi;
-	    if $! {
-		$mouse-and-keyboard-reporting.emit: CSI::Error;
-		# disable mouse tracking and sink stdin for one second to wipe potential uncaught signals
-		disable-mouse-reporting;
-		Promise.anyof: start { loop { sink $*IN.read(1) } }, Promise.in(1);
-		last;
-	    }
-	    elsif $csi ~~ / \[ <[<>]> [$<private-code> =\d+]\; [$<x> = \d+] \; [$<y> = \d+] <m=[mM]>/ {
-		given $<private-code> {
-		    when 35 { $mouse-and-keyboard-reporting.emit: Mouse::Move.new:  :$<x>, :$<y> }
-		    when  0 {
-			if $<m> eq 'M' {
-			    $mouse.left.press;
-			    $mouse-and-keyboard-reporting.emit: Mouse::Click.new: :$<x>, :$<y>;
-			} else {
-			    $mouse.left.release;
-			    $mouse-and-keyboard-reporting.emit: Mouse::Release.new: :$<x>, :$<y>;
-			}
-		    }
-		    default { $mouse-and-keyboard-reporting.emit: ~$/; }
+    sub select-square($square) {
+	if $position{$square}:exists {
+	    print Kitty::APC
+	    a => 'p',
+	    p => $placement-id + 70,
+	    i => %Kitty::ID<green-square>,
+	    P => %Kitty::ID<checkerboard>,
+	    Q => $placement-id,
+	    |Chess::Graphics::get-placement-parameters($square),
+	    z => $z + ($position{$square} ?? 1 !! 0),
+	    q => 1
+	    ;
+	    if $position{$square}.color ~~ $position.turn {
+		my @moves = $position.moves(:$square);
+		print "\r{@moves».LAN}\e[K";
+		for @moves {
+		    print Kitty::APC
+		    a => 'p',
+		    p => $placement-id + 71 + $++,
+		    i => %Kitty::ID<green-circle>,
+		    P => %Kitty::ID<checkerboard>,
+		    Q => $placement-id,
+		    |Chess::Graphics::get-placement-parameters(.to),
+		    z => $z + ($position{.to} ?? 1 !! 0),
+		    q => 1
+		    ;
 		}
 	    }
-	    else { $mouse-and-keyboard-reporting.emit: "unreckognized csi {$csi.raku}" }
+	}
+    }
+    sub unselect-square($square) {
+	print Kitty::APC a => 'd', d => 'i', p => $placement-id + 70, i => %Kitty::ID<green-square>, q => 1;
+	for $position.moves(:$selected-square) {
+	    print Kitty::APC a => 'd', d => 'i', q => 1,
+	    i => %Kitty::ID<green-circle>,
+	    p => $placement-id + 71 + $++
+	    ;
 	}
     }
 
     react {
-	my Chess::Position $position .= new: $from.fen;
-	whenever $mouse-and-keyboard-reporting {
-	    when CSI::Error {
-		print "non-CSI input: quitting";
-		sleep .5;
-		done
-	    }
-	    when Mouse::Event {
-		my ($x, $y) = (.x, .y).map: * div $Chess::Graphics::square-size;
-		my ($r, $c) = 7 - $y, $x;
-		if $r & $c ~~ ^8 {
-		    my $square = square::{ ('a'..'h')[$c] ~ ($r + 1) };
-			print "\r$board-state: $square -> {$position.moves(:$square)».LAN}\e[K";
-			when Mouse::Click {
-			    if $board-state == IDLE && $position{$square}.defined && $position{$square}.color == $position.turn {
-				my @moves = $position.moves(:$square);
-				$board-state = ONE-SQUARE-IS-SELECTED;
-				$selected-square = $square;
-				print Kitty::APC
-				a => 'p',
-				p => $placement + 70,
-				i => %Kitty::ID<green-square>,
-				P => %Kitty::ID<checkerboard>,
-				Q => $placement,
-				|Chess::Graphics::get-placement-parameters($square),
-				z => $z + ($position{$square} ?? 1 !! 0),
-				q => 1
-				;
-				for @moves {
-				    print Kitty::APC
-				    a => 'p',
-				    p => $placement + 71 + $++,
-				    i => %Kitty::ID<green-circle>,
-				    P => %Kitty::ID<checkerboard>,
-				    Q => $placement,
-				    |Chess::Graphics::get-placement-parameters(.to),
-				    z => $z + ($position{$square} ?? 1 !! 0),
-				    q => 1
-				    ;
-				}
-			    }
-			    elsif $board-state == ONE-SQUARE-IS-SELECTED {
-				my @moves = $position.moves(:square($selected-square));
-				print Kitty::APC a => 'd', d => 'i', p => $placement + 70, i => %Kitty::ID<green-square>, q => 1;
-				for @moves { print Kitty::APC a => 'd', d => 'i', q => 1, p => $placement + 71 + $++, i => %Kitty::ID<green-circle>; }
-				if $square == $selected-square {
-				    $board-state = IDLE;
-				    $selected-square = square;
-				}
-				elsif $square == @moves».to.any {
-				    start {
-					with $position{$square} { play-sound "Capture"; }
-					else { play-sound "Move"; }
-				    }
-				    $board-state = IDLE;
-				    print "\rplacing {$position{$selected-square}.symbol} on $square\e[K";
-				    $position .= new: $position, @moves.first( { .to == $square } );
-				    $selected-square = square;
-				    print "\e[u";
-				    #print Kitty::APC a => 'd', d => 'i', p => $placement, i => %Kitty::ID<checkerboard>, q => 1;
-				    $z+=13;
-				    show $position, :placement-id($placement) :$z, :no-screen-measure;
-				}
-				else {
-				    $selected-square = $square;
-				    print Kitty::APC
-				    a => 'p',
-				    p => $placement + 70,
-				    i => %Kitty::ID<green-square>,
-				    P => %Kitty::ID<checkerboard>,
-				    Q => $placement,
-				    |Chess::Graphics::get-placement-parameters($square),
-				    z => $z+10,
-				    q => 1
-				    ;
-				    for $from.moves(:$square) {
-					print Kitty::APC
-					a => 'p',
-					p => $placement + 71 + $++,
-					i => %Kitty::ID<green-circle>,
-					P => %Kitty::ID<checkerboard>,
-					Q => $placement,
-					|Chess::Graphics::get-placement-parameters(.to),
-					z => $z + 11,
-					q => 1
-					;
-				    }
-				}
-			    }
-			    print "\e]22;grabbing\a";
-			}
-			when Mouse::Release { print "\e]22;grab\e\\";  }
-			default {
-			    given $board-state {
+	whenever self.decoded {
+	    when 'q' { self.set-done; done }
+	    when Str { print "\r$_\e[K" }
+	    when MouseTrackingEvent {
+		my ($x, $y) = .x, .y;
+		my ($dx, $dy) = ($x, $y) Z- @upper-left;
+		my ($c, $r) = ($dx, $dy) »div» $*square-size;
+		if $c&$r ~~ ^8 {
+		    my $square = square($r +< 4 + $c);
+		    if .button.defined {
+			if .button == 1 && .pressed {
+			    given $state {
 				when IDLE {
-				    with $position{$square} {
-					if .color ~~ $position.turn { print "\e]22;hand\e\\" }
-					else                        { print "\e]22;not-allowed\e\\" }
-				    } else { print "\e]22;not-allowed\e\\" }
-				} 
+				    select-square $square;
+				    $state = ONE-SQUARE-IS-SELECTED;
+				    $selected-square = $square;
+				}
+				when ONE-SQUARE-IS-SELECTED {
+				    use Chess::Moves;
+				    unselect-square($square);
+				    if $square == $selected-square {
+					$state = IDLE;
+					$selected-square = Nil;
+				    } elsif $position.moves(:$selected-square).map(*.LAN).any eq "$selected-square$square" {
+					say "\rmove is $selected-square$square\e[K";
+					$position.=new: $position, Move.new: "$selected-square$square";
+					show-position;
+					$state = IDLE;
+					$selected-square = Nil;
+				    } else {
+					$state = IDLE;
+					$selected-square = Nil
+				    }
+				}
 			    }
 			}
-		} else { printf "\e]22;default\a"; }
+		    }
+		    elsif $position{$square}:exists && $position{$square}.color ~~ $position.turn { print "\e]22;hand\e\\" }
+		    else { print "\e]22;not-allowed\e\\\r{.raku}\e[K" }
+		} else { print "\e]22;not-allowed\e\\" }
 	    }
-	    #when Mouse::Release { print "\e]22;hand\a"; }
-	    when Str {
-		print "\rgot message `$_`\e[K";
+	    default {
+		print "\r{.raku}\e[K";
 	    }
 	}
-	# can't make the line below work for some reason
-	#whenever Promise.in($time-out) { done }
     }
 
-    await $csi-catching;
 }
-
 
 # vi: shiftwidth=4 nu nowrap

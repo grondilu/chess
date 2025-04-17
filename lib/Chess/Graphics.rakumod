@@ -4,28 +4,25 @@ use Chess::Board;
 
 use Kitty;
 
-our constant $square-size = 100;
-
 # using dynamic variables for
 # terminal and window sizes
 
 our sub get-placement-parameters(square $square) {
     my ($rank, $file) = rank($square), file($square);
-    my ($rows, $columns) = .rows, .cols given $*terminal-size;
-    my ($cell-width, $cell-height) = $*window-width div $columns, $*window-height div $rows;
+    my ($cell-width, $cell-height) = $*window-width div $*cols, $*window-height div $*rows;
     %(
-	H => ($file*$square-size) div $cell-width,
-	X => ($file*$square-size) mod $cell-width,
-	V => ($rank*$square-size) div $cell-height,
-	Y => ($rank*$square-size) mod $cell-height,
+	H => ($file*$*square-size) div $cell-width,
+	X => ($file*$*square-size) mod $cell-width,
+	V => ($rank*$*square-size) div $cell-height,
+	Y => ($rank*$*square-size) mod $cell-height,
     )
 }
 
 our proto show(Chess::Position $, UInt :$placement-id, UInt :$z, Bool :$no-screen-measure) returns UInt is export {*}
 multi show($position, :$placement-id, :$z, :$no-screen-measure!) returns UInt is export {
-    once Kitty::transmit-data :$square-size;
+    once Kitty::transmit-data :$*square-size;
 
-    say Kitty::APC
+    print Kitty::APC
     a => 'p',
     i => %Kitty::ID<checkerboard>,
     p => $placement-id,
@@ -46,16 +43,22 @@ multi show($position, :$placement-id, :$z, :$no-screen-measure!) returns UInt is
 	    ;
 	}
     }
+    print " \n";
 
     return $placement-id;
 }
 
 multi show($position, :$placement-id = Kitty::ID-RANGE.pick, :$z = 0) returns UInt is export {
-    use Terminal::Size;
-    use CSI;
+    use Terminal::LineEditor::RawTerminalInput;
 
-    my $*terminal-size = terminal-size;
-    my ($*window-height, $*window-width) = CSI::get-window-size;
+    my Terminal::LineEditor::CLIInput $input .= new;
+    LEAVE $input.set-done;
+
+    $input.enter-raw-mode;
+    LEAVE $input.leave-raw-mode;
+    my ($*rows, $*cols) = %*ENV<LINES COLUMNS>;
+    without $*rows|$*cols { ($*rows, $*cols) = await $input.detect-terminal-size; }
+    my ($*window-height, $*window-width) = await $input.detect-window-size;
 
     samewith $position, :$placement-id, :$z, :no-screen-measure;
 }
