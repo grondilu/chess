@@ -132,12 +132,14 @@ method input-moves(Chess::Position $from) is export {
 		if $c&$r ~~ ^8 {
 		    my $square = square($r +< 4 + $c);
 		    if .button.defined {
-			if .button == 1 && .pressed {
+			if .button == 1 && .pressed && !.motion {
 			    given $state {
 				when IDLE {
-				    select-square $square;
-				    $state = ONE-SQUARE-IS-SELECTED;
-				    $selected-square = $square;
+				    if $position{$square}.color ~~ $position.turn {
+					select-square $square;
+					$state = ONE-SQUARE-IS-SELECTED;
+					$selected-square = $square;
+				    }
 				}
 				when ONE-SQUARE-IS-SELECTED {
 				    use Chess::Moves;
