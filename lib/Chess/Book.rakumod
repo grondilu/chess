@@ -1,57 +1,46 @@
-unit module Chess::Book;
+unit class Chess::Book;
 use Chess::Position;
 use Chess::Moves;
 
-our sub search-from-disk(Chess::Position $position, IO::Path :$path) {
+has blob8 $.data;
 
-	constant $entry-size = 16; # bytes
+multi method new(IO::Path $path) { self.bless: data => $path.slurp: :bin, :close }
 
-	my IO::Handle $handle = $path.open: :r, :bin;
-	$handle.seek: 0, SeekFromEnd;
-	my $size = $handle.tell;
-	fail "unexpected file size" unless $size %% $entry-size;
+method AT-KEY(Chess::Position $position) {
+    constant $entry-size = 16; # bytes
 
-	my UInt $num-entries = $size div $entry-size;
-	my uint64 $key = $position.uint;
-	my UInt ($left, $right) = 0, $num-entries - 1;
-	my UInt $first-match;
-	while $left ≤ $right {
-		my UInt $middle = ($left + $right) div 2;
-		my UInt $offset = $entry-size * $middle;
-		$handle.seek: $offset, SeekFromBeginning;
-		given $handle.read(8).read-uint64(0, BigEndian) {
-			when $key {
-				$first-match = $middle;
-				last;
-			}
-			when * < $key { $left = $middle + 1; }
-			default { $right = $middle - 1; }
-		}
+    fail "unexpected file size" unless $!data.elems %% $entry-size;
+
+    my UInt $num-entries = $!data.elems div $entry-size;
+    my uint64 $key = $position.uint;
+    my UInt ($left, $right) = 0, $num-entries - 1;
+    my UInt $first-match;
+    while $left ≤ $right {
+	my UInt $middle = ($left + $right) div 2;
+	my UInt $offset = $entry-size * $middle;
+	given $!data.subbuf($offset, $entry-size).read-uint64(0, BigEndian) {
+	    when $key {
+		$first-match = $middle;
+		last;
+	    }
+	    when * < $key { $left = $middle + 1; }
+	    default { $right = $middle - 1; }
 	}
-	$handle.seek: -8, SeekFromCurrent;
-	loop {
-		try $handle.seek: -$entry-size, SeekFromCurrent;
-		last if $!;
-		if $handle.read(8).read-uint64(0, BigEndian) !== $key {
-			$handle.seek(8, SeekFromCurrent);
-			last;
-		}
-		$handle.seek: -8, SeekFromCurrent;
+    }
+    gather {
+	given sub ($i) {
+		my $entry = $!data.subbuf($i*$entry-size, $entry-size);
+		last unless $key == $entry.read-uint64(0, BigEndian);
+		take %(
+		    move   => Move.new($entry.read-uint16(8, BigEndian)),
+		    weight =>          $entry.read-uint16(10, BigEndian),
+		    learn  =>          $entry.read-uint32(12, BigEndian)
+		);
+	} {
+	    for $first-match     ^..  * -> $i { .($i) }
+	    for $first-match, *-1 ... * -> $i { .($i) }
 	}
-	gather until $handle.eof {
-		given $handle.read(8).read-uint64(0, BigEndian) {
-			when $key.none { last }
-			default {
-				take {
-					%(
-						move   => Move.new(.read-uint16(0, BigEndian), :$position),
-						weight => .read-uint16(2, BigEndian),
-						learn  => .read-uint32(4, BigEndian)
-					)
-				}($handle.read(8));
-			}
-		}
-	}
+    }
 }
 
-
+# vi: shiftwidth=4 nu
