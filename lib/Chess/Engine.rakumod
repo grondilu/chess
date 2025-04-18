@@ -1,13 +1,18 @@
-unit class Chess::Stockfish is Proc::Async;
+unit class Chess::Engine is Proc::Async;
 use Chess::Moves;
 use Chess::Position;
 
 has Supply $!lines;
 
-multi method new { samewith 'stockfish', :w }
+has Str $.command;
+has Str $.name;
+has UInt ($.major-version, $.minor-version);
+
+multi method new(Str $command = 'stockfish') { self.Proc::Async::new: $command, :w }
 
 submethod BUILD { $!lines = self.stdout.lines; }
 submethod TWEAK {
+    self.start;
     start react {
 	#whenever $!lines { .note if /^info/; }
 	whenever signal(SIGINT) {
@@ -30,7 +35,11 @@ method start {
 	whenever self.say: "uci" {
 	    note "waiting for `uciok` from stockfish";
 	    whenever $!lines { 
-		if /^uciok$/ {
+		if /^ 'id name ' $<name> = [ <ident>+ ] \s $<major-version> = [ <[1..9]>\d* ] [ \. $<minor-version> = \d+ ]? / {
+		    $!name = $<name>.Str;
+		    $!major-version = $<major-version>.UInt;
+		    $!minor-version = $<minor-version>.UInt;
+		} elsif /^ uciok $/ {
 		    note "`uciok` received";
 		    done
 		}
@@ -45,17 +54,13 @@ method start {
     return $start;
 }
 
-method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500, :$cache? --> Promise) {
-    state %cache;
+method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500 --> Promise) {
     my Promise $best-move .= new;
     with $position {
 	if $position.isCheckmate {
 	    LEAVE $best-move.keep(Nil);
 	    return $best-move;
 	}
-    }
-    with $cache {
-	with %cache{$position} { $best-move.keep($_); return $best-move }
     }
     use Chess::UCI;
     start {
@@ -70,7 +75,6 @@ method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500, :$c
 	whenever $!lines {
 	    if /^<Chess::UCI::best-move>/ {
 		$best-move.keep: my $move = Move.new: ~$<Chess::UCI::best-move>;
-		%cache{$position} = $move with $cache;
 		done;
 	    } elsif /'score mate 0'/ {
 		# this is checkmate so there's no best move
@@ -124,7 +128,7 @@ method quit {
 	    # finish any calculation
 	    sleep 1;
 	    whenever self.say("quit") {
-		note "stockfish quitting.";
+		note "$!name quitting.";
 		done;
 	    }
 	}
