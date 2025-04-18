@@ -26,6 +26,7 @@ method input-moves(Chess::Position $from) is export {
     use Kitty;
     use Chess::Board;
     use Chess::Pieces;
+    use Chess::Moves;
 
     use Terminal::ANSI;
 
@@ -68,9 +69,9 @@ method input-moves(Chess::Position $from) is export {
     print "\e[?1016h";
     LEAVE print "\e[?1016l";
 
-    my enum State <IDLE ONE-SQUARE-IS-SELECTED>;
+    my enum State <IDLE ONE-SQUARE-IS-SELECTED PROMOTION>;
     my State $state = IDLE;
-    my square $selected-square;
+    my square ($selected-square, $promotion-square);
 
     sub select-square($square) {
 	if $position{$square}:exists {
@@ -114,8 +115,16 @@ method input-moves(Chess::Position $from) is export {
 
     react {
 	whenever self.decoded {
-	    when 'q' { self.set-done; done }
-	    when Str { print "\r$_\e[K" }
+	    when 'q' { proceed if $state ~~ PROMOTION; self.set-done; done }
+	    when <q b n r>.any {
+		if $state ~~ PROMOTION {
+		    my $move = Promotion.new: :from($selected-square), :to($promotion-square), :promotion(%( <q b r n> Z=> Queen, Bishop, Rook, Knight ){$_});
+		    $position .= new: $position, $move;
+		    show-position;
+		    $state = IDLE;
+		}
+	    }
+	    when Str { print "\rinput=$_\e[K" }
 	    when MouseTrackingEvent {
 		my ($x, $y) = .x, .y;
 		my ($dx, $dy) = ($x, $y) Z- @upper-left;
@@ -136,12 +145,19 @@ method input-moves(Chess::Position $from) is export {
 				    if $square == $selected-square {
 					$state = IDLE;
 					$selected-square = Nil;
-				    } elsif $position.moves(:$selected-square).map(*.LAN).any eq "$selected-square$square" {
-					say "\rmove is $selected-square$square\e[K";
-					$position.=new: $position, Move.new: "$selected-square$square";
-					show-position;
-					$state = IDLE;
-					$selected-square = Nil;
+				    } elsif $position.moves(:$selected-square).map(*.LAN.substr(0,4)).any eq "$selected-square$square" {
+					if $position{$selected-square} ~~ Pawn && rank($square) == PROMOTION-RANK {
+					    print "\rplease type q, b, n or r to pick promotion piece\e[K";
+					    $state = PROMOTION;
+					    $promotion-square = $square;
+					}
+					else {
+					    say "\rmove is $selected-square$square\e[K";
+					    $position.=new: $position, Move.new: "$selected-square$square";
+					    show-position;
+					    $state = IDLE;
+					    $selected-square = Nil;
+					}
 				    } else {
 					$state = IDLE;
 					$selected-square = Nil
