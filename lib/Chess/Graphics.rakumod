@@ -43,7 +43,6 @@ multi show($position, :$placement-id, :$z, :$no-screen-measure!) returns UInt is
 	    ;
 	}
     }
-    print " \n";
 
     return $placement-id;
 }
