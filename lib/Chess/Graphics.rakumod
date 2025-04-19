@@ -136,7 +136,7 @@ multi make-move(Castle $move, :$position, :$placement-id, :$z) {
     my $piece = $position{$from};
     my $to    = square(($move.from + $move.to) div 2);
     remove-piece         square => $from, :$position, :$placement-id;
-    place-piece  $piece,            :$to, :$position, :$placement-id, :$z;
+    place-piece  :$piece,            :$to, :$position, :$placement-id, :$z;
 }
 multi make-move(EnPassant $move, :$position, :$placement-id, :$z) {
     callsame;
