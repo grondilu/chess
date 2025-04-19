@@ -5,6 +5,33 @@ use Chess::Graphics;
 use Chess::Position;
 use Chess::Board;
 
+=begin rakudoc
+
+=head THE STATE MACHINE
+
+Dealing with mouse and keyboard events to allow the user to enter chess moves
+on a graphical board can be tricky.  It requires a rigorous state machine
+implementations.
+
+=head2 GROUND STATE
+
+Nothing is selected, and nothing is highlighted. The user is
+expected to move the mouse and click on a piece of the side whose turn it is.
+
+=head2 A-PIECE-IS-SELECTED
+
+One piece is selected, thus its square is highlighted. The destination
+squares of all possible moves are also highlighted, albeit differently.
+
+=head2 A-MOVE-WAS-PLAYED
+
+similar to the ground state, except the origin and destination squares for
+the previouly played move are highlighted.
+
+=head2
+
+=end rakudoc
+
 submethod TWEAK { self.start-decoder }
 
 method detect-window-size {
@@ -53,11 +80,7 @@ method input-moves(Chess::Position $from) is export {
     print "\e]22;>wait\e\\";
     # save cursor position (in terminal)
     print "\e7";
-    sub show-position { 
-	print "\e8";
-	show $position, :$placement-id, :$z, :no-screen-measure;
-	$z += 3; # supper impose next placement with some margin
-    }();
+    show $position, :$placement-id, :$z, :no-screen-measure;
     print "\e]22;<\e\\";
 
     my @upper-left = (@cursor[1]-1) * ($*window-width div $*cols), (@cursor[0]-1) * ($*window-height div $*rows);
@@ -72,46 +95,22 @@ method input-moves(Chess::Position $from) is export {
     my enum State <IDLE ONE-SQUARE-IS-SELECTED PROMOTION>;
     my State $state = IDLE;
     my square ($selected-square, $promotion-square);
+    my square $square;
 
+    my @undo-stack;
     sub select-square($square) {
 	if $position{$square}:exists {
-	    print Kitty::APC
-	    a => 'p',
-	    p => $placement-id + 70,
-	    i => %Kitty::ID<green-square>,
-	    P => %Kitty::ID<checkerboard>,
-	    Q => $placement-id,
-	    |Chess::Graphics::get-placement-parameters($square),
-	    z => $z + ($position{$square} ?? 1 !! 0),
-	    q => 1
-	    ;
+	    @undo-stack.push:
+	    Chess::Graphics::highlight-square $square, :$placement-id,
+	    z => $z + ($position{$square}:exists ?? 1 !! 0);
 	    if $position{$square}.color ~~ $position.turn {
 		my @moves = $position.moves(:$square);
-		print "\r{@moves».LAN}\e[K";
-		for @moves {
-		    print Kitty::APC
-		    a => 'p',
-		    p => $placement-id + 71 + $++,
-		    i => %Kitty::ID<green-circle>,
-		    P => %Kitty::ID<checkerboard>,
-		    Q => $placement-id,
-		    |Chess::Graphics::get-placement-parameters(.to),
-		    z => $z + ($position{.to} ?? 1 !! 0),
-		    q => 1
-		    ;
-		}
+		@undo-stack.push:
+		Chess::Graphics::highlight-moves-destinations(@moves, :$placement-id, z => $z + 1);
 	    }
 	}
     }
-    sub unselect-square($square) {
-	print Kitty::APC a => 'd', d => 'i', p => $placement-id + 70, i => %Kitty::ID<green-square>, q => 1;
-	for $position.moves(:$selected-square) {
-	    print Kitty::APC a => 'd', d => 'i', q => 1,
-	    i => %Kitty::ID<green-circle>,
-	    p => $placement-id + 71 + $++
-	    ;
-	}
-    }
+    sub unselect-square($square) { @undo-stack.pop()() while @undo-stack; }
 
     react {
 	whenever self.decoded {
@@ -119,8 +118,8 @@ method input-moves(Chess::Position $from) is export {
 	    when <q b n r>.any {
 		if $state ~~ PROMOTION {
 		    my $move = Promotion.new: :from($selected-square), :to($promotion-square), :promotion(%( <q b r n> Z=> Queen, Bishop, Rook, Knight ){$_});
+		    Chess::Graphics::make-move $move, :$position, :$placement-id, :$z;
 		    $position .= new: $position, $move;
-		    show-position;
 		    $state = IDLE;
 		}
 	    }
@@ -130,12 +129,17 @@ method input-moves(Chess::Position $from) is export {
 		my ($dx, $dy) = ($x, $y) Z- @upper-left;
 		my ($c, $r) = ($dx, $dy) »div» $*square-size;
 		if $c&$r ~~ ^8 {
-		    my $square = square($r +< 4 + $c);
+		    my $hovered-square = square($r +< 4 + $c);
+		    $square //= $hovered-square;
+		    if $square !== $hovered-square {
+			print "\r$square -> $hovered-square\e[K";
+			$square = $hovered-square;
+		    }
 		    if .button.defined {
 			if .button == 1 && .pressed && !.motion {
 			    given $state {
 				when IDLE {
-				    if $position{$square}.color ~~ $position.turn {
+				    if $position{$square}:exists && $position{$square}.color ~~ $position.turn {
 					select-square $square;
 					$state = ONE-SQUARE-IS-SELECTED;
 					$selected-square = $square;
@@ -154,9 +158,10 @@ method input-moves(Chess::Position $from) is export {
 					    $promotion-square = $square;
 					}
 					else {
-					    say "\rmove is $selected-square$square\e[K";
-					    $position.=new: $position, Move.new: "$selected-square$square";
-					    show-position;
+					    #print "\rmove is $selected-square$square\e[K";
+					    my $move = Move.new("$selected-square$square")/$position;
+					    Chess::Graphics::make-move $move, :$position, :$placement-id, :$z;
+					    $position.=new: $position, $move;
 					    $state = IDLE;
 					    $selected-square = Nil;
 					}
@@ -171,11 +176,11 @@ method input-moves(Chess::Position $from) is export {
 		    elsif $state ~~ IDLE && ($position{$square}:exists) && $position{$square}.color ~~ $position.turn
 			or $state ~~ ONE-SQUARE-IS-SELECTED && $square == $position.moves(:square($selected-square))».to.any 
 		    { print "\e]22;hand\e\\" }
-		    else { print "\e]22;not-allowed\e\\\r{.raku}\e[K" }
+		    else { print "\e]22;not-allowed\e\\" }
 		} else { print "\e]22;not-allowed\e\\" }
 	    }
 	    default {
-		print "\r{.raku}\e[K";
+		;
 	    }
 	}
     }

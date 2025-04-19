@@ -47,6 +47,7 @@ class Move {
 }
 
 role Castle[UInt $rook-column] is Move is export {
+    method rook-column { $rook-column }
     method piece-type { King }
     method move-pieces(@board) {
 	# move the king
@@ -85,6 +86,11 @@ class Promotion is PawnMove is export {
     method move-pieces(@board) {
 	@board[self.to] = $.promotion.new: :color(.color) given
 	@board[self.from]:delete;
+    }
+    method uint {
+	self.Move::uint + %(
+	    Knight, Bishop, Rook, Queen Z=> 1..4
+	){$!promotion} +< 12;
     }
 }
 
