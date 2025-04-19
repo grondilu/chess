@@ -46,19 +46,21 @@ has Move $.last-move;
 
 sub infix:</>(Move $move, ::?CLASS $position) returns Move is export {
     use Chess::Board;
+    my Str $lan = $move.LAN;
     given $position{$move.from} {
 	when King {
 	    if file($move.from) == file(e1) {
 		given file($move.to) {
-		    when file(g1) { return KingsideCastle.new: $move.LAN }
-		    when file(c1) { return QueensideCastle.new: $move.LAN }
+		    when file(g1) { return  KingsideCastle.new: $lan }
+		    when file(c1) { return QueensideCastle.new: $lan }
 		}
 	    }
 	}
 	when Pawn {
-	    if abs(rank($move.to) - rank($move.from)) == 2                             { return BigPawnMove.new: $move.LAN }
-	    elsif file($move.to) !== file($move.from) && ($position{$move.to}:!exists) { return EnPassant.new: $move.LAN   }
-	    elsif rank($move.to) == PROMOTION-RANK                                     { return Promotion.new: $move.LAN   }
+	    if abs(rank($move.to) - rank($move.from)) == 2                             { return BigPawnMove.new: $lan }
+	    elsif file($move.to) !== file($move.from) && ($position{$move.to}:!exists) { return EnPassant.new:   $lan }
+	    elsif rank($move.to) == PROMOTION-RANK                                     { return Promotion.new:   $lan }
+	    else                                                                       { return PawnMove.new:    $lan }
 	}
     }
     return $move;
