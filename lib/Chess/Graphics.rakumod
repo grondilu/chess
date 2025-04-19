@@ -67,7 +67,7 @@ multi show($position, :$placement-id = Kitty::ID-RANGE.pick, :$z = 0) returns UI
 
     samewith $position, :$placement-id, :$z, :no-screen-measure;
 }
-our sub highlight-square(square $square, UInt :$placement-id, Int :$z = 0) {
+our sub highlight-square(square $square, UInt :$placement-id, Int :$z = 0) returns Code {
     print Kitty::APC
     a => 'p',
     p => $placement-id + 65 + $square,
@@ -78,9 +78,10 @@ our sub highlight-square(square $square, UInt :$placement-id, Int :$z = 0) {
     :$z,
     q => 1
     ;
+    # returns undoing code
     return { print Kitty::APC :a<d>, :d<i>, p => $placement-id + 65 + $square, i => %Kitty::ID<green-square> }
 }
-our sub highlight-moves-destinations(@moves, UInt :$placement-id, Int :$z = 0) {
+our sub highlight-moves-destinations(@moves, UInt :$placement-id, Int :$z = 0) returns Code {
     my @destinations = @moves».to.unique;
     for @destinations {
 	print Kitty::APC
@@ -94,6 +95,7 @@ our sub highlight-moves-destinations(@moves, UInt :$placement-id, Int :$z = 0) {
 	q => 1
 	;
     }
+    # returns undoing code
     return {
 	for @destinations {
 	    print Kitty::APC a => 'd', d => 'i', q => 1,
@@ -136,7 +138,7 @@ multi make-move(Castle $move, :$position, :$placement-id, :$z) {
     my $piece = $position{$from};
     my $to    = square(($move.from + $move.to) div 2);
     remove-piece         square => $from, :$position, :$placement-id;
-    place-piece  $piece,            :$to, :$position, :$placement-id, :$z;
+    place-piece  :$piece,            :$to, :$position, :$placement-id, :$z;
 }
 multi make-move(EnPassant $move, :$position, :$placement-id, :$z) {
     callsame;
