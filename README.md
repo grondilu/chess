@@ -2,10 +2,6 @@
 
 Chess-related stuff in Raku
 
-**DISCLAIMER: recent changes make most of the documentation
-below inexact.  Corrections will come.**
-
-
 ## SYNOPSIS
 
 ```
@@ -30,42 +26,14 @@ rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
  ```
 ## Description
 
-
-### Exported symbols
-
-The library exports a black/white enumeration for colors,
-either for squares or for pieces:
-
-```raku
-say white;
-say black;
-```
-
-An enumeration for all the squares of the chessboard is also exported :
-
-```raku
-.say for e4, e5, g8
-```
-
-There is a term called `startpos` which returns an instance of the `Chess::Position` class representing
-the starting position.  See synopsis above.
-
-The multiplication operator is overloaded to apply a move to a position. The position must be on the left
-side, and the move on the right side, as show on the synopsis.  For this to work the move must be a string
-in SAN notation.  Hopefully this is quite intuitive.
-
-The crux of any chess library or engine is to generate all possible moves from any given position.  This is done
-in this library either with an exported subroutine `legal-moves`, as seen in the synopsis, or with the `moves` method
-of the `Chess::Position` class.
-
-## PGN Grammar
+### PGN Grammar
 
 ```raku
 use Chess::PGN;
 say Chess::PGN.parse: "1. f3 e5 2. g4?? Qh4#";
 ```
 
-## FEN Grammar
+### FEN Grammar
 
 ```raku
 use Chess::FEN;
@@ -76,38 +44,22 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 ## General utilities
 
-### Displaying a chess position
+### Graphical display in the terminal with Kitty's graphics protocol
 
-```raku
-use Chess;
-show [*] startpos, <e4 e5 Nf3 Nc6>;
-```
+![showing the start position in kitty](https://i.imgur.com/aNAXmJS.png)
 
-On most terminals, the code above would produce an ascii diagram, as seen in the synopsis.
+[ImageMagick](https://imagemagick.org/script/command-line-tools.php) is also required to produce the PNG files as the images of the pieces are stored in SVG.
 
-On kitty(see below), it will show a nice diagram inside the terminal (notice
-that it flips the board when it's Black's turn) :
+Zooming in or out in Kitty will not scale the image of the chessboard up or down.  You can however set the dynamic variable `$*square-size` to
+pick a different board size.  This only works if you set this variable before the first execution of `show` though, as the image data is transmitted to kitty only once.
 
-![Ruy Lopez position](https://i.imgur.com/KBXgO7U.png)
 
-This requires :
+![showing the start position in kitty, with a custom square size](https://i.imgur.com/KaqfJKu.png)
 
-  - ~~an internet connection (to access the lichess API);~~
-  - [Kitty](https://sw.kovidgoyal.net/kitty/), or any terminal supporting its [graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
-  - ~~`wget`~~
-  - ~~[ImageMagick](https://imagemagick.org/script/command-line-tools.php)~~
-  - ~~GNU's *coreutils* (for `basenc`)~~
 
 ### Polyglot books
 
-The subroutine `Chess::make-book` takes PGN data, either as a string or an `IO::Path` object,
-and produces a Blob that can then be spurt into a [polyglot book](https://www.chessprogramming.org/PolyGlot).
-
-The class `Chess::Book` can be used to read such books.
-
-## LINKS
-
- - [Human.bin](https://digilander.libero.it/taioscacchi/programmi/saros-page.html)
+WIP
 
 ## TODO
 

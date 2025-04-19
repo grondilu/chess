@@ -4,23 +4,28 @@ use Chess::Board;
 
 use Kitty;
 
+
+constant $default-square-size = 32;
+
 # using dynamic variables for
 # terminal and window sizes
+#
 
 our sub get-placement-parameters(square $square) {
+    my $square-size = $*square-size // $default-square-size;
     my ($rank, $file) = rank($square), file($square);
     my ($cell-width, $cell-height) = $*window-width div $*cols, $*window-height div $*rows;
     %(
-	H => ($file*$*square-size) div $cell-width,
-	X => ($file*$*square-size) mod $cell-width,
-	V => ($rank*$*square-size) div $cell-height,
-	Y => ($rank*$*square-size) mod $cell-height,
+	H => ($file*$square-size) div $cell-width,
+	X => ($file*$square-size) mod $cell-width,
+	V => ($rank*$square-size) div $cell-height,
+	Y => ($rank*$square-size) mod $cell-height,
     )
 }
 
 our proto show(Chess::Position $, UInt :$placement-id, UInt :$z, Bool :$no-screen-measure) returns UInt is export {*}
 multi show($position, :$placement-id, :$z, :$no-screen-measure!) returns UInt is export {
-    once Kitty::transmit-data :$*square-size;
+    once Kitty::transmit-data :square-size($*square-size // $default-square-size);
 
     print Kitty::APC
     a => 'p',
