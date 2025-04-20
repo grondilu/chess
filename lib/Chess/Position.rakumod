@@ -103,8 +103,8 @@ multi method new(Str $fen = startpos) {
     self.bless: :%kings, :@board, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number, :$last-move;
 }
 
-multi method new(::?CLASS $position, Move $move, Bool :$recursed = False) {
-    return self.new: $position, $move/$position, :recursed unless $recursed;
+multi method new(::?CLASS:D $position: Move $move, Bool :$recursed = False) {
+    return self.new: $move/$position, :recursed unless $recursed;
     my square %kings{color} = $position.kings<>;
     my Piece @board[128]; @board[$_] = $position{$_} for square::{*};
     my color $turn       = ¬$position.turn;
@@ -284,7 +284,7 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 	    }
 	}
     }.grep:
-	!$legal || (%!kings{$us}:!exists) ?? * !! { ! self.new(self, $_).pass.isCheck }
+	!$legal || (%!kings{$us}:!exists) ?? * !! { ! self.new($_).pass.isCheck }
 }
 
 method !attacked(color $color, square $square, Bool :$verbose) {

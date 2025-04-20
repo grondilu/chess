@@ -38,7 +38,7 @@ sub move-to-SAN(Move $move, Chess::Position $position) returns SAN is export {
 	    ($position{$move.to}:exists ?? 'x' !! '') ~
 	    $move.to;
 	}
-    } ~ do given Chess::Position.new($position, $move) {
+    } ~ do given $position.new($move) {
 	when    Check     { '+' }
 	when    Checkmate { '#' }
 	default              {  '' }

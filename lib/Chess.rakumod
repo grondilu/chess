@@ -34,9 +34,7 @@ use Chess::SAN;
 sub term:<startpos> is export { Chess::Position.new }
 
 multi infix:<*>(Chess::Position $position, SAN $move --> Chess::Position) is export {
-    Chess::Position.new:
-	$position,
-	move-from-SAN($move, $position)
+    $position.new: move-from-SAN($move, $position)
 }
 
 proto legal-moves($) is export {*}
@@ -46,7 +44,7 @@ multi legal-moves(Str $fen where { Chess::FEN.parse: $_ }) { samewith Chess::Pos
 our sub perft(UInt $depth, Chess::Position :$position = startpos) returns UInt {
   my $nodes = 0;
   for $position.moves -> $move {
-      if $depth > 1 { $nodes += samewith $depth - 1, position => Chess::Position.new($position, $move); }
+      if $depth > 1 { $nodes += samewith $depth - 1, position => $position.new($move); }
       else { $nodes++ }
   }
   return $nodes;

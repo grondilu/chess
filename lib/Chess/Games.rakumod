@@ -23,7 +23,7 @@ class Game {
     has Chess::Position $.initial-position;
 
     method pgn {
-	my Chess::Position @position = produce { Chess::Position.new: $^a, $^b }, Chess::Position.new, |@!moves;
+	my Chess::Position @position = produce { $^a.new: $^b }, Chess::Position.new, |@!moves;
 	my @SAN = (@!moves Z, @position).map: -> ($a, $b) { move-to-SAN $a, $b }
 	join "\n",
 	%!tag-pair
@@ -55,7 +55,7 @@ multi load(Match $/) {
 	for $<movetext-section><move>»<SAN> {
 	    @moves.push:
 		my Move $move = move-from-SAN(.Str.subst(/<[+#]>$/,'',:g), $position);
-	    $position = Chess::Position.new: $position, $move;
+	    $position.=new: $move;
 	}
 	my Termination $termination =
 	    %(
