@@ -24,5 +24,6 @@ method all-pairs { square::{*}.sort(+*).map({ $_ => @!board[$_]}) }
 method AT-KEY(square $square) { @!board[$square] }
 method ASSIGN-KEY(square $square, Piece $piece) { @!board[$square] = $piece }
 method EXISTS-KEY(square $square) { @!board[$square].defined }
+method DELETE-KEY(square $square) { LEAVE @!board[$square] = Nil; @!board[$square] }
 
 # vi: shiftwidth=4 nu nowrap
