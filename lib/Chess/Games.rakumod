@@ -53,9 +53,9 @@ multi load(Match $/) {
 	my Chess::Position $position .= new;
 	my Move @moves;
 	for $<movetext-section><move>»<SAN> {
-	    @moves.push:
-		my Move $move = move-from-SAN(.Str.subst(/<[+#]>$/,'',:g), $position);
-	    $position.=new: $move;
+	    @moves.push: my Move $move .= new: .Str, :color($position.turn), :board($position);
+	    try $position.=new: $move;
+	    fail "could not update position for move {$move.raku}, position is:\n{$position.ascii}" if $!;
 	}
 	my Termination $termination =
 	    %(

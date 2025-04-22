@@ -29,14 +29,12 @@ rule move-number-indication { <integer>\.* }
 
 token SAN {
   <castle> |
-  <promotion> |
   <piece-move> |
   <pawn-move>
 }
-token pawn-move { [<file>x]?<square> }
+token pawn-move { [<file>x]?<square>['='<promotion=.piece>]? }
 regex piece-move { <piece><disambiguation>??x?<square> }
 token castle     { O ** 2..3 % \- }
-token promotion  { <pawn-move>'='<piece> }
 
 token disambiguation { <file> | <rank> | <square> }
 

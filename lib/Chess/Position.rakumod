@@ -37,7 +37,6 @@ constant startpos = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1};
 
 enum castling-rights <kingside queenside>;
 
-has square %.kings{color};
 has color $.turn;
 has Set[castling-rights] %.castling-rights{color};
 has en-passant-square $.en-passant;
@@ -57,9 +56,9 @@ sub infix:</>(Move $move, ::?CLASS $position) returns Move is export {
 	    }
 	}
 	when Pawn {
-	    if abs(rank($move.to) - rank($move.from)) == 2                             { return BigPawnMove.new: $lan }
+	    if abs(rank($move.to) - rank($move.from)) == 2                             { return PawnMove.new($lan) but BigPawnMove }
 	    elsif file($move.to) !== file($move.from) && ($position{$move.to}:!exists) { return EnPassant.new:   $lan }
-	    elsif rank($move.to) == PROMOTION-RANK                                     { return Promotion.new:   $lan }
+	    elsif rank($move.to) == $PROMOTION-RANK                                    { return Promotion.new:   $lan }
 	    else                                                                       { return PawnMove.new:    $lan }
 	}
     }
@@ -103,23 +102,24 @@ multi method new(Str $fen = startpos) {
     self.bless: :%kings, :@board, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number, :$last-move;
 }
 
-multi method new(::?CLASS:D $position: Move $move, Bool :$recursed = False) {
-    return self.new: $move/$position, :recursed unless $recursed;
-    my square %kings{color} = $position.kings<>;
-    my Piece @board[128]; @board[$_] = $position{$_} for square::{*};
-    my color $turn       = ¬$position.turn;
-    my Set[castling-rights] %castling-rights{color} = $position.castling-rights<>;
+multi method new(::?CLASS:U: Move $) {...}
+
+multi method new(::?CLASS:D: Move::FullyDefined $move) {
+    my square %kings{color} = self.kings<>;
+    my Piece @board[128]; @board[$_] = self{$_} for square::{*};
+    my color $turn       = ¬self.turn;
+    my Set[castling-rights] %castling-rights{color} = self.castling-rights<>;
     my en-passant-square $en-passant;
-    my UInt $half-moves-count = $position.half-moves-count + 1;
-    my UInt $move-number = $position.move-number;
-    $move-number++ if $position.turn ~~ black;
+    my UInt $half-moves-count = self.half-moves-count + 1;
+    my UInt $move-number = self.move-number;
+    $move-number++ if self.turn ~~ black;
 
     given my $moving-piece = @board[$move.from] {
 	when King {
 	    if %castling-rights{$moving-piece.color} {
 		%castling-rights{$moving-piece.color} (-)= (kingside, queenside);
 	    }
-	    %kings{$position.turn} = $move.to;
+	    %kings{self.turn} = $move.to;
 	}
 	when Rook {
 	    if %castling-rights{$moving-piece.color} {
@@ -135,44 +135,28 @@ multi method new(::?CLASS:D $position: Move $move, Bool :$recursed = False) {
 	    $en-passant = square($move.to - $moving-piece.offsets[0]) if $move ~~ BigPawnMove;
 	}
 	when !* {
-	    fail "there is no piece on square $move.from";
+	    fail "there is no piece on square {$move.from}:\n{self.ascii}";
 	}
     }
-    given $position{$move.to} {
-	when .defined && .color ~~ $position{$move.from} {
-	    fail "can't capture a piece of the same color";
+    given self{$move.to} {
+	when .defined && .color ~~ self{$move.from}.color {
+	    fail "can't capture a piece of the same color (move is {$move.raku}):\n{self.ascii}";
 	}
 	when .defined {
 	    $half-moves-count = 0;
 	}
     }
-    $move.move-pieces(@board);
-    self.bless:
-    :%kings,
-    :@board,
-    :$turn,
-    :%castling-rights,
-    :$en-passant,
-    :$half-moves-count,
-    :$move-number,
-    :last-move($move);
-}
-
-submethod BUILD(:%!kings, :@board, :$!turn, :%!castling-rights, :$!en-passant, :$!half-moves-count, :$!move-number, :$!last-move) {}
-
-method pass {
-    my Piece @board[128];
-    @board[.key] = .value for self.pairs;
-	
-    self.bless:
-    :kings(%!kings<>),
-    :@board,
-    :turn(¬$!turn),
-    :castling-rights(%!castling-rights<>),
-    :$!en-passant,
-    :$!half-moves-count,
-    :$!move-number,
-    :last-move(Move)
+    my $blessing = self.bless:
+	:%kings,
+	:@board,
+	:$turn,
+	:%castling-rights,
+	:$en-passant,
+	:$half-moves-count,
+	:$move-number,
+	:last-move($move);
+    $move.move-pieces($blessing);
+    $blessing;
 }
 
 method gist { self.fen }
@@ -209,15 +193,15 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 		next if $piece.symbol ne 'Ø' && $piece !~~ Pawn;
 		$to = square($from + $pawn.offsets[0]);
 		if !self{$to} {
-		    if rank($to) == PROMOTION-RANK {
+		    if rank($to) == $PROMOTION-RANK {
 			for Queen, Knight, Bishop, Rook -> $promotion {
-			    take Promotion.bless: :$from, :$to, :$promotion
+			    take PawnMove.bless(:$from, :$to) but Promotion[$promotion];
 			}
 		    } else { take PawnMove.bless: :$from, :$to; }
 		    try $to = square($from + $pawn.offsets[1]);
 		    unless $! {
 			if rank($from) == %SECOND-RANK{$us} && !self{$to} {
-			    take BigPawnMove.bless: :$from, :$to;
+			    take PawnMove.bless(:$from, :$to) but BigPawnMove;
 			}
 		    }
 		}
@@ -225,7 +209,7 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 		    try $to = square($from + $pawn.offsets[$j]);
 		    next if $!;
 		    if self{$to}.defined && self{$to}.color ~~ $them {
-			if rank($to) == PROMOTION-RANK {
+			if rank($to) == $PROMOTION-RANK {
 			    for Queen, Knight, Bishop, Rook -> $promotion {
 				take Promotion.bless(:$from, :$to, :$promotion) but capture;
 			    }
@@ -254,37 +238,37 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 	    }
 	}
 	if $piece.symbol eq 'Ø' || $piece ~~ King {
-	    if $piece !~~ King || $square.defined && $square == %!kings{$us} {
+	    if $piece !~~ King || $square.defined && $square == self.kings{$us} {
 		if kingside ∈ %!castling-rights{$us} {
-		    my square $castling-from = %!kings{$us};
+		    my square $castling-from = self.kings{$us};
 		    my square $castling-to   = square($castling-from + 2);
 		    if 
 			!self{square($castling-from + 1)} &&
 			!self{$castling-to} &&
-			!self!attacked($them, %!kings{$us}) &&
+			!self!attacked($them, self.kings{$us}) &&
 			!self!attacked($them, square($castling-from + 1)) &&
 			!self!attacked($them, $castling-to)
 		    {
-			take KingsideCastle.new: :from(%!kings{$us}), :to($castling-to)
+			take KingsideCastle.new: :from(self.kings{$us}), :to($castling-to)
 		    }
 		}
 		if queenside ∈ %!castling-rights{$us} {
-		    my square $castling-from = %!kings{$us};
+		    my square $castling-from = self.kings{$us};
 		    my square $castling-to   = square($castling-from - 2);
 		    if 
 			!self{square($castling-from - 1)} &&
 			!self{$castling-to} &&
-			!self!attacked($them, %!kings{$us}) &&
+			!self!attacked($them, self.kings{$us}) &&
 			!self!attacked($them, square($castling-from - 1)) &&
 			!self!attacked($them, $castling-to)
 		    {
-			take QueensideCastle.new: :from(%!kings{$us}), :to($castling-to)
+			take QueensideCastle.new: :from(self.kings{$us}), :to($castling-to)
 		    }
 		}
 	    }
 	}
     }.grep:
-	!$legal || (%!kings{$us}:!exists) ?? * !! { ! self.new($_).pass.isCheck }
+	!$legal || (self.kings{$us}:!exists) ?? * !! { ! self.new($_).pass.isCheck }
 }
 
 method !attacked(color $color, square $square, Bool :$verbose) {
@@ -361,7 +345,7 @@ method attackers(square $square, color $attackedBy?) {
 }
 
 method !isKingAttacked(color $color --> Bool) {
-    %!kings{$color}:exists ?? self!attacked(¬$color, %!kings{$color}) !! False
+    self.kings{$color}:exists ?? self!attacked(¬$color, self.kings{$color}) !! False
 }
 method isCheck     returns Bool {  self!isKingAttacked($!turn) }
 method inCheck     returns Bool {  self.isCheck }
@@ -395,24 +379,6 @@ method isInsufficientMaterial returns Bool {
 	}
     }
     return False;
-}
-
-method ascii {
-    my $s = "   +------------------------+\n";
-    my @squares = square::{(8,7...1) X[R~] 'a'..'h'};
-    for @squares.rotor(8) -> @row {
-	state $r;
-	$s ~= " {8 - $r++} |";
-	for @row -> $square {
-	    my $piece = self{$square};
-	    $s ~= " {$piece ?? $piece.symbol !! '.'} ";
-	}
-	$s ~= "|\n";
-    }
-    $s ~= "   +------------------------+\n";
-    $s ~= "     a  b  c  d  e  f  g  h";
-    return $s;
-
 }
 
 method WHICH { self.uint.base(36) }
