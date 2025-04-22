@@ -69,6 +69,7 @@ multi method new(Str $fen = startpos) {
     use Chess::FEN;
     my square %kings{color};
     my Piece @board[128];
+    my Set[square] %pieces{Piece};
     my color $turn;
     my Set[castling-rights] %castling-rights{color};
     my en-passant-square $en-passant;
@@ -84,6 +85,7 @@ multi method new(Str $fen = startpos) {
 	method piece($/) {
 	    my $square = square::{('a'..'h')[$!c++] ~ (7-$!r)+1};
 	    @board[$square] = %(<p n b r q k> Z=> Pawn, Knight, Bishop, Rook, Queen, King){~$/.lc}.new(:color(~$/ ~~ /<upper>/ ?? white !! black));
+	    %pieces{@board[$square]} (|)= Set[square].new: $square;
 	    if $/ eq 'k'|'K' { %kings{%( k => black, K => white ){$/}} = $square; }
 	}
 	method empty-squares($/)    { $!c+=$/ }
@@ -99,7 +101,7 @@ multi method new(Str $fen = startpos) {
 	}
 	method full-move-number($/) { $move-number = +$/ }
     }.new;
-    self.bless: :%kings, :@board, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number, :$last-move;
+    self.bless: :%kings, :@board, :%pieces, :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number, :$last-move;
 }
 
 multi method new(::?CLASS:U: Move $) {...}
@@ -158,6 +160,8 @@ multi method new(::?CLASS:D: Move::FullyDefined $move) {
     $move.move-pieces($blessing);
     $blessing;
 }
+
+method make(::?CLASS:D: Move::FullyDefined $move) {...}
 
 method gist { self.fen }
 method fen returns Str {
@@ -245,9 +249,9 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 		    if 
 			!self{square($castling-from + 1)} &&
 			!self{$castling-to} &&
-			!self!attacked($them, self.kings{$us}) &&
-			!self!attacked($them, square($castling-from + 1)) &&
-			!self!attacked($them, $castling-to)
+			!self.attacked(:color($them), :square(self.kings{$us})) &&
+			!self.attacked(:color($them), :square(square($castling-from + 1))) &&
+			!self.attacked(:color($them), :square($castling-to))
 		    {
 			take KingsideCastle.new: :from(self.kings{$us}), :to($castling-to)
 		    }
@@ -258,9 +262,9 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 		    if 
 			!self{square($castling-from - 1)} &&
 			!self{$castling-to} &&
-			!self!attacked($them, self.kings{$us}) &&
-			!self!attacked($them, square($castling-from - 1)) &&
-			!self!attacked($them, $castling-to)
+			!self.attacked(:color($them), :square(self.kings{$us})) &&
+			!self.attacked(:color($them), :square(square($castling-from - 1))) &&
+			!self.attacked(:color($them), :square($castling-to))
 		    {
 			take QueensideCastle.new: :from(self.kings{$us}), :to($castling-to)
 		    }
@@ -268,86 +272,14 @@ method moves(Bool :$legal = True, Piece:U :$piece, square :$square) {
 	    }
 	}
     }.grep:
-	!$legal || (self.kings{$us}:!exists) ?? * !! { ! self.new($_).pass.isCheck }
+	!$legal || (self.kings{$us}:!exists) ?? * !! {
+	    my &undo = .move-pieces(self);
+	    LEAVE &undo();
+	    not self.isKingAttacked($us);
+	}
 }
 
-method !attacked(color $color, square $square, Bool :$verbose) {
-    constant $RAYS = Blob[int8].new:
-    17, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 15, 0, 0, 17, 0, 0, 0,
-    0, 0, 16, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 17, 0, 0, 0, 0, 16, 0, 0, 0,
-    0, 15, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 0, 0,
-    0, 0, 0, 17, 0, 0, 16, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0,
-    16, 0, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 16, 15, 0, 0, 0, 0,
-    0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0,
-    0, 0, 0, 0, -15, -16, -17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -15, 0,
-    -16, 0, -17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -15, 0, 0, -16, 0, 0, -17,
-    0, 0, 0, 0, 0, 0, 0, 0, -15, 0, 0, 0, -16, 0, 0, 0, -17, 0, 0, 0, 0, 0,
-    0, -15, 0, 0, 0, 0, -16, 0, 0, 0, 0, -17, 0, 0, 0, 0, -15, 0, 0, 0, 0,
-    0, -16, 0, 0, 0, 0, 0, -17, 0, 0, -15, 0, 0, 0, 0, 0, 0, -16, 0, 0, 0,
-    0, 0, 0, -17;
-    my @attackers;
-    for square::{*} -> $i {
-	my $piece = self{$i};
-	if !$piece || $piece.color !~~ $color {
-	    next;
-	}
-	my $difference = $i - $square;
-	next if $difference == 0;
-	my $index = $difference + 119;
-	if $piece.attacks($index) {
-	    if $piece ~~ Pawn {
-		if
-		$difference > 0 && $piece.color ~~ white ||
-		$difference ≤ 0 && $piece.color ~~ black {
-		    if !$verbose {
-			return True;
-		    } else {
-			@attackers.push: $i;
-		    }
-		}
-		next;
-	    }
-	    if $piece ~~ Knight|King {
-		if !$verbose {
-		    return True;
-		} else {
-		    @attackers.push: $i;
-		    next;
-		}
-	    }
-	    my $offset = $RAYS[$index];
-	    my $j = $i + $offset;
-	    my Bool $blocked = False;
-	    while $j !== $square {
-		if self{square($j)} {
-		    $blocked = True;
-		    last;
-		}
-		$j += $offset;
-	    }
-	    if !$blocked {
-		if !$verbose {
-		    return True;
-		} else {
-		    @attackers.push: $i;
-		}
-	    }
-	}
-    }
-    $verbose ?? @attackers !! False;
-}
-method attackers(square $square, color $attackedBy?) {
-    self!attacked:
-    $attackedBy.defined ?? $attackedBy !! $!turn,
-    $square,
-    :verbose
-    ;
-}
-
-method !isKingAttacked(color $color --> Bool) {
-    self.kings{$color}:exists ?? self!attacked(¬$color, self.kings{$color}) !! False
-}
-method isCheck     returns Bool {  self!isKingAttacked($!turn) }
+method isCheck     returns Bool {  self.isKingAttacked($!turn) }
 method inCheck     returns Bool {  self.isCheck }
 method isCheckmate returns Bool {  self.isCheck && self.moves.elems == 0 }
 method isStalemate returns Bool { !self.isCheck && self.moves.elems == 0 }

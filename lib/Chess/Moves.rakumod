@@ -6,7 +6,6 @@ use Chess::Pieces;
 
 class Move is export {...}
 
-
 subset KnightMove of Move is export where { Knight.attacks(119 + .to - .from) };
 role capture is export {}
 
@@ -21,11 +20,11 @@ my regex annotation { <[+#]>?<[!?]>** 0..2 }
 
 class Move {
     has square ($.from, $.to);
-    our subset FullyDefined of ::?CLASS where { .from.defined && .to.defined }
+    our subset FullyDefined of ::?CLASS where { defined .from & .to : }
     method LAN(FullyDefined:) { "$!from$!to" }
     method gist { self.LAN }
     multi method piece-type(KnightMove:) { Knight }
-    method move-pieces(FullyDefined: Chess::Board $board) {
+    multi method move-pieces(FullyDefined: Chess::Board $board) {
 	my @record = $board{$!from, $!to};
 	$board{$!to} = $board{$!from}:delete;
 	return -> { $board{$!from, $!to} = @record }
@@ -80,7 +79,7 @@ class Move {
 	    orwith $<piece-move> -> $/ {
 		my $to = square::{$<square>};
 		my Piece:U $piece-type = %( <N B R Q K> Z=> Knight, Bishop, Rook, Queen, King ){$<piece>};
-		my square @from = $board.find-attacking-pieces: :piece($piece-type.new(:$color)), :$to;
+		my square @from = $board.findSpecificAttackingPieces: :piece($piece-type.new(:$color)), :$to;
 		my &constructor = $board{$to}:exists ??
 		-> *%args { self.new(|%args) but capture } !!
 		-> *%args { self.new(|%args) };
@@ -99,7 +98,11 @@ class Move {
 		}
 		fail "could not find piece for move $/ ($color to play) in position :\n{$board.ascii}" if @from == 0;
 		if @from > 1 {
-		    @from.=grep: { self.bless(:from($_), :$to).is-legal: :$color, :$board }
+		    @from.=grep: -> $from {
+			my &undo = self.bless(:$from, :$to).move-pieces: $board;
+			LEAVE &undo();
+			not $board.isKingAttacked($color);
+		    }
 		}
 		fail "ambiguity remains for move $/ ($color to play) in position:\n{$board.ascii}" if @from > 1;
 		my square $from = @from.pick;
@@ -107,11 +110,6 @@ class Move {
 	    }
 	    else {...}
 	}
-    }
-    method is-legal(color :$color, Chess::Board :$board) {
-	my &undo = self.move-pieces: $board;
-	LEAVE &undo();
-	return not $board.is-king-attacked(:$color);
     }
 
     multi method new(UInt $int) {

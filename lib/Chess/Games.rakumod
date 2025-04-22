@@ -54,8 +54,8 @@ multi load(Match $/) {
 	my Move @moves;
 	for $<movetext-section><move>»<SAN> {
 	    @moves.push: my Move $move .= new: .Str, :color($position.turn), :board($position);
-	    try $position.=new: $move;
-	    fail "could not update position for move {$move.raku}, position is:\n{$position.ascii}" if $!;
+	    $position.=new: $move;
+	    #fail "could not update position for move {$move.raku}, position is:\n{$position.ascii}\nerror is:\n$!" if $!;
 	}
 	my Termination $termination =
 	    %(
