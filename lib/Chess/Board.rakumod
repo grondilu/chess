@@ -99,7 +99,7 @@ multi method find-attacking-pieces(Piece  :$piece where Bishop|Rook|Queen, :$to)
 method is-king-attacked(color :$color) returns Bool {
     my $king-location = %!kings{$color};
     [||] map {
-	so self.find-attacking-pieces(piece => .new(:color(¬$color)), :to($king-location)).head 
+	self.find-attacking-pieces(piece => .new(:color(¬$color)), :to($king-location)).head.defined ;
     }, King, Queen, Rook, Bishop, Knight, Pawn, King;
 }
 
