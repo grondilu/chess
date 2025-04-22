@@ -34,7 +34,8 @@ use Chess::SAN;
 sub term:<startpos> is export { Chess::Position.new }
 
 multi infix:<*>(Chess::Position $position, SAN $move --> Chess::Position) is export {
-    $position.new: move-from-SAN($move, $position)
+    use Chess::Moves;
+    $position.new: Move.new: $move, :color($position.turn), :board($position);
 }
 
 proto legal-moves($) is export {*}
