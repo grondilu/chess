@@ -54,8 +54,8 @@ method is-pinned(square $square) returns Bool {
 		return True if $a.color ~~ $piece.color && $b ~~ $t and $b.color ~~ ¬$piece.color;
 	    }
 	}
-	if    rank($king-square) == rank($square)   { test-block Queen|Rook,   ($square, *+ 1 ^...^ * %%  8), ($square, *-1 ^... * %% 16) }
-	elsif file($king-square) == file($square)   { test-block Queen|Rook,   ($square, *+16 ^...^ * > 128), ($square, *-16 ^...^ * < 0) }
+	if    rank($king-square)  == rank($square)  { test-block Queen|Rook,   ($square, *+ 1 ^...^ * %%  8), ($square, *-1 ^... * %% 16) }
+	elsif file($king-square)  == file($square)  { test-block Queen|Rook,   ($square, *+16 ^...^ * > 128), ($square, *-16 ^...^ * < 0) }
 	elsif slash($king-square) == slash($square) { test-block Queen|Bishop, ($square, *+15 ^...^ {(($_ % 16) > 7) || $_ > 128}), ($square, *-15 ^...^ { ($_ < 0) || (($_ % 16) > 7) }) }
 	elsif slosh($king-square) == slosh($square) { test-block Queen|Bishop, ($square, *+17 ^...^ {(($_ % 16) > 7) || $_ > 128}), ($square, *-17 ^...^ { ($_ < 0) || (($_ % 16) > 7) }) }
 	return False;
