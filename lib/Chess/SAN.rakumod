@@ -53,4 +53,4 @@ sub move-from-SAN(SAN $move, $position) returns Move is export {
 }
 
 
-# vi: set shiftwidth=4 nu
+# vi: shiftwidth=4 nu
