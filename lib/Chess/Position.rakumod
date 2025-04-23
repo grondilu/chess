@@ -138,7 +138,42 @@ multi method new(::?CLASS:D: Move::FullyDefined $move) {
 
 method deprive-of-castling-right(castling-right $castling-right, color :$color) { %!castling-rights{$color} (-)= $castling-right }
 
-method make(::?CLASS:D: Move::FullyDefined $move) {...}
+method make(::?CLASS:D: Move::FullyDefined $move) {
+    $!move-number++ if $!turn ~~ black;
+    $!turn = ¬$!turn;
+    $!half-moves-count++;
+    $!en-passant = Nil;
+    given self{$move.from} {
+	when King {
+	    for kingside, queenside -> $right { self.deprive-of-castling-right($right, :color(.color)) }
+	}
+	when Rook {
+	    if kingside  ∈ self.castling-rights{.color} and $move.from == (.color ~~ white ?? h1 !! h8) {
+		self.deprive-of-castling-right(kingside, :color(.color));
+	    }
+	    if queenside ∈ self.castling-rights{.color} and $move.from == (.color ~~ white ?? a1 !! a8) {
+		self.deprive-of-castling-right(queenside, :color(.color));
+	    }
+	}
+	when Pawn {
+	    $!half-moves-count = 0;
+	    $!en-passant = square($move.to - .offsets[0]) if $move ~~ BigPawnMove;
+	}
+	when !* {
+	    fail "there is no piece on square {$move.from}:\n{self.ascii}";
+	}
+    }
+    given self{$move.to} {
+	when .defined {
+	    if .color ~~ self{$move.from}.color {
+		fail "can't capture a piece of the same color (move is {$move.raku}):\n{self.ascii}";
+	    }
+	    $!half-moves-count = 0;
+	}
+    }
+    $move.move-pieces(self);
+    return;
+}
 
 method gist { self.fen }
 method fen returns Str {
