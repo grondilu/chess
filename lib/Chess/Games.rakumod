@@ -44,7 +44,7 @@ class Game {
 
 }
 
-our proto load($) returns Array[Game] {*}
+our proto load($) {*}
 multi load(Match $/) {
     # for some reason using an hyper here fails
     #hyper for $<game> -> $/ {
@@ -54,8 +54,8 @@ multi load(Match $/) {
 	my Move @moves;
 	for $<movetext-section><move>»<SAN> {
 	    @moves.push: my Move $move .= new: .Str, :color($position.turn), :board($position);
-	    $position.=new: $move;
-	    #fail "could not update position for move {$move.raku}, position is:\n{$position.ascii}\nerror is:\n$!" if $!;
+	    try $position.=new: $move;
+	    fail "could not update position for move {$move.raku}, position is:\n{$position.ascii}\nerror is:\n$!" if $!;
 	}
 	my Termination $termination =
 	    %(

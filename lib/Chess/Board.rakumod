@@ -12,8 +12,6 @@ enum square is export ((([1..8] .reverse) X[R~] 'a'..'h') Z=> ((0, 16 ... *) Z[X
 has Piece @!board[128];
 has Set[square] %!pieces{Piece};
 
-has square %.kings{color};
-
 method     AT-KEY(square $square) { @!board[$square] }
 method EXISTS-KEY(square $square) { @!board[$square].defined }
 
@@ -31,9 +29,18 @@ method ASSIGN-KEY(square $square, Piece $piece) {
     @!board[$square] = $piece;                     
 } 
 
-method find(Piece $piece) { %!pieces{$piece} }
+multi method find(Piece $piece) { %!pieces{$piece} }
+multi method find(King $king) {
+    given %!pieces{$king} {
+	fail "too many {$king.color} kings" if .elems > 1;
+	return $_;
+    }
+}
 
-method set(Str $board) {
+multi method new(Str $board) { self.bless: :$board }
+
+#submethod BUILD(:@!board, :%!pieces, :%!kings) {}
+submethod BUILD(Str :$board) {
     constant %pieces = <p n b r q k> Z=> Pawn, Knight, Bishop, Rook, Queen, King;
     my $self = self;
     Chess::FEN.parse:
@@ -74,14 +81,12 @@ subset en-passant-square of square is export where /<[36]>$/;
 our constant %SECOND-RANK    is export = (white) => rank(a2), (black) => rank(a7);
 our constant $PROMOTION-RANK is export = rank(a1)|rank(a8);
 
-submethod BUILD(:@!board, :%!pieces, :%!kings) {}
-
 method pairs { @!board.pairs.grep: *.value }
 method all-pairs { square::{*}.sort(+*).map({ $_ => @!board[$_]}) }
 
 method is-pinned(square $square) returns Bool {
     with self{$square} -> $piece {
-	my $king-square = %!kings{$piece.color};
+	my $king-square = self.kings($piece.color);
 	my &test-block = -> $t, @a, @b {
 	    my $a = first *.defined, self{|map {square($_)}, @a};
 	    my $b = first *.defined, self{|map {square($_)}, @b};
@@ -179,7 +184,10 @@ method attacked(color :$color, square :$square) returns Bool {
 }
 
 method isKingAttacked(color $color --> Bool) {
-    self.kings{$color}:exists ?? self.attacked(:color(¬$color), :square(self.kings{$color})) !! False
+    with self.find(King.new($color)).pick -> $square {
+	return self.attacked(:color(¬$color), :$square)
+    }
+    else { return False }
 }
 
 method !attackers(color :$color, square :$square) {
