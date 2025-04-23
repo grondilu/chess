@@ -6,11 +6,17 @@ subset UnicodeSymbol of Str where "\x2654" .. "\x265F";
 role Piece is export {
     method symbol returns Symbol { 'Ø' }
     method unicode-symbol { ' ' }
+    method WHICH { self.symbol }
 }
 role Piece[Symbol $symbol, UnicodeSymbol $black, UnicodeSymbol $white, UInt $mask] is export {
   has color $.color is required;
-  method WHICH { self.symbol }
   multi method new(color $color) { self.bless: :$color }
+
+  # WHICH needs to me repeated here 
+  # although it should be inherited from the parameterless version
+  # of the role above
+  method WHICH { self.symbol }
+
   method attacks($index) { 
     (BEGIN blob8.new(
       20, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 20, 0, 0, 20, 0, 0,

@@ -6,11 +6,30 @@ use Chess::Pieces;
 # https://en.wikipedia.org/wiki/0x88
 enum square is export ((([1..8] .reverse) X[R~] 'a'..'h') Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
 
+class BitBoard {
+    constant @squares = square::{*}.sort: *.value;
+    constant %squares = @squares.antipairs.map: { .key => 1 +< .value };
+
+    has uint64 $!bits;
+    multi method new(UInt $bits) { self.bless: :$bits }
+
+    submethod BUILD(:$!bits = 0) {}
+
+    method elems { $!bits.polymod(2 xx *).sum }
+    multi method keys { gather loop (my $i = 0; $i < 64; $i++) { take @squares[$i] if 1 +& ($!bits +> $i) } }
+    multi method Bool { $!bits > 0 }
+
+    method EXISTS-KEY(square $square) { so $!bits +& %squares{$square} }
+
+    method add   (square $square) { $!bits +|= %squares{$square} }
+    method remove(square $square) { $!bits +^= %squares{$square} }
+}
+
 # hybrid representation:
 # - keeping track on which piece is an which square
 # - keeping track on which squares are pieces on
 has Piece @!board[128];
-has Set[square] %!pieces{Piece};
+has BitBoard %!pieces{Piece};
 
 method     AT-KEY(square $square) { @!board[$square] }
 method EXISTS-KEY(square $square) { @!board[$square].defined }
@@ -18,41 +37,49 @@ method EXISTS-KEY(square $square) { @!board[$square].defined }
 method DELETE-KEY(square $square) {
     with self{$square} -> $piece {
 	LEAVE @!board[$square] = Nil;
-	.=new without %!pieces{$piece};
-	%!pieces{$piece} (-)= Set[square].new: $square;
+	#.=new without %!pieces{$piece};
+	%!pieces{$piece}.remove: $square;
 	return @!board[$square];
     }
     else { fail "attempt to remove piece from empty square" }
 }
 method ASSIGN-KEY(square $square, Piece $piece) {
-    %!pieces{$piece} (|)= Set[square].new: $square;
+    #.=new without %!pieces{$piece};
+    %!pieces{$piece}.add: $square;
     @!board[$square] = $piece;                     
 } 
 
-multi method find(Piece $piece) { %!pieces{$piece} }
+proto method find(Piece $piece) returns Set[square] {*}
+multi method find(Piece $piece) { Set[square].new: %!pieces{$piece}.keys }
 multi method find(King $king) {
     given %!pieces{$king} {
 	fail "too many {$king.color} kings" if .elems > 1;
-	return $_;
+	return Set[square].new: .keys;
     }
 }
 
 multi method new(Str $board) { self.bless: :$board }
 
-#submethod BUILD(:@!board, :%!pieces, :%!kings) {}
 submethod BUILD(Str :$board) {
     constant %pieces = <p n b r q k> Z=> Pawn, Knight, Bishop, Rook, Queen, King;
-    my $self = self;
-    Chess::FEN.parse:
-    $board,
-    actions => class {
-	has UInt $!s = 0;
-	method rank($/) { $!s += 8 }
-	method empty-squares($/) { $!s += +$/ }
-	method piece($/) { $!s++ }
-	method black-piece($/) { $self{square($!s)} = %pieces{$/.Str.lc}.new: black }
-	method white-piece($/) { $self{square($!s)} = %pieces{$/.Str.lc}.new: white }
-    }.new;
+    for %pieces.values -> $piece {
+	for black, white -> $color { %!pieces{$piece.new($color)} .= new; }
+    }
+    %!pieces{Piece}.=new;
+
+    with $board {
+	my $self = self;
+	Chess::FEN.parse:
+	$board,
+	actions => class {
+	    has UInt $!s = 0;
+	    method rank($/) { $!s += 8 }
+	    method empty-squares($/) { $!s += +$/ }
+	    method piece($/) { $!s++ }
+	    method black-piece($/) { $self{square($!s)} = %pieces{$/.Str.lc}.new: black }
+	    method white-piece($/) { $self{square($!s)} = %pieces{$/.Str.lc}.new: white }
+	}.new;
+    }
 }
 
 
