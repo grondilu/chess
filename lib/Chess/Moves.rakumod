@@ -6,7 +6,7 @@ use Chess::Pieces;
 
 class Move is export {...}
 
-subset KnightMove of Move is export where { Knight.attacks(119 + .to - .from) };
+subset KnightMove of Move is export where { grey-knight.attacks(119 + .to - .from) };
 role capture is export {}
 
 class PawnMove {...}
@@ -23,11 +23,13 @@ class Move {
     our subset FullyDefined of ::?CLASS where { defined .from & .to : }
     method LAN(FullyDefined:) { "$!from$!to" }
     method gist { self.LAN }
-    multi method piece-type(KnightMove:) { Knight }
+    multi method piece-type(KnightMove:) { knight }
     multi method move-pieces(FullyDefined: Chess::Board $board) {
-	my @record = $board{$!from, $!to};
+	my ($from, $to) = $board{$!from, $!to};
 	$board{$!to} = $board{$!from}:delete;
-	return -> { $board{$!from, $!to} = @record }
+	return -> {
+	    $board{$!from, $!to} = $from, $to;
+	}
     }
     multi method pseudo-SAN(capture:) {
 	self.piece-type.symbol.uc ~ 'x' ~ $!to
@@ -67,7 +69,7 @@ class Move {
 		my square $from = square($rank +< 4 + $file);
 		my $move = PawnMove.new(:$from, :$to);
 		with $<promotion> {
-		    my $promotion = %( <q b n r> Z=> Queen, Bishop, Knight, Rook ){.Str.lc};
+		    my $promotion = %( <q b n r> Z=> queen, bishop, knight, rook ){.Str.lc};
 		    $move does Promotion[$promotion];
 		}
 		if file($from) !== file($to) {
@@ -78,8 +80,8 @@ class Move {
 	    }
 	    orwith $<piece-move> -> $/ {
 		my $to = square::{$<square>};
-		my Piece:U $piece-type = %( <N B R Q K> Z=> Knight, Bishop, Rook, Queen, King ){$<piece>};
-		my square @from = $board.findSpecificAttackingPieces: :piece($piece-type.new(:$color)), :$to;
+		my piece-type $type = %( <N B R Q K> Z=> knight, bishop, rook, queen, king ){$<piece>};
+		my square @from = $board.findSpecificAttackingPieces: :piece(Piece.new(:$type, :$color)), :$to;
 		my &constructor = $board{$to}:exists ??
 		-> *%args { self.new(|%args) but capture } !!
 		-> *%args { self.new(|%args) };
@@ -121,14 +123,14 @@ class Move {
 
 	my ($from, $to) = map -> ($f, $r) { square::{['a'..'h'][$f] ~ (1 + $r)} }, ($from-file, $from-rank), ($to-file, $to-rank);
 	my $blessing = self.bless: :$from, :$to;
-	$blessing does Promotion[(Piece, Knight, Bishop, Rook, Queen)[$promotion]] if $promotion > 0;
+	$blessing does Promotion[(piece-type, knight, bishop, rook, queen)[$promotion]] if $promotion > 0;
 	return $blessing;
     }
 }
 
 role Castle[UInt $rook-column] is Move is export {
     method rook-column { $rook-column }
-    method piece-type { King }
+    method piece-type { king }
     method move-pieces(Move::FullyDefined: Chess::Board $board) {
 	# move the king
 	my &undo1 = self.Move::move-pieces($board);
@@ -157,7 +159,7 @@ class  KingsideCastle does Castle[7] is export { method pseudo-SAN {   'O-O' } }
 class QueensideCastle does Castle[0] is export { method pseudo-SAN { 'O-O-O' } }
 
 class PawnMove is Move is export {
-    method piece-type { Pawn }
+    method piece-type { pawn }
     method pseudo-SAN(Move::FullyDefined:) {
 	file(self.from) == file(self.to) ?? 
 	~self.to !!
@@ -174,15 +176,15 @@ role EnPassant is export {
     }
 }
 
-role Promotion[Piece:U $promotion] is export {
-    method LAN { self.Move::LAN ~ $promotion.symbol.lc }
+role Promotion[piece-type $promotion] is export {
+    method LAN { self.Move::LAN ~ symbol($promotion).lc }
     method pseudo-SAN { self.PawnMove::pseudo-SAN ~ '=' ~ $promotion.symbol.uc; }
     method move-pieces(Move::FullyDefined: Chess::Board $board) {
-	$board{self.to} = $promotion.new: :color(.color) given $board{self.from}:delete;
+	$board{self.to} = Piece.new(:type($promotion),:color(.color)) given $board{self.from}:delete;
     }
     method uint(Move::FullyDefined:) {
 	self.Move::uint + %(
-	    Knight, Bishop, Rook, Queen Z=> 1..4
+	    knight, bishop, rook, queen Z=> 1..4
 	){$promotion} +< 12;
     }
 }

@@ -1,7 +1,9 @@
 use Chess::Board;
 unit class Chess::Position is Chess::Board;
-# translated from https://github.com/jhlywa/chess.js.git
-#`{{{ ORIGINAL LICENSE
+
+# translated from https://github.com/jhlywa/chess.js.git,
+# albeit heavily modified by now
+=begin original-licence
 Copyright (c) 2025, Jeff Hlywa (jhlywa@gmail.com)
 All rights reserved.
 
@@ -25,7 +27,8 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
-}}}
+=end original-licence
+
 use Chess::Colors;
 use Chess::Pieces;
 use Chess::Moves;

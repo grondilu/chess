@@ -10,13 +10,13 @@ class BitBoard {
     constant @squares = square::{*}.sort: *.value;
     constant %squares = @squares.antipairs.map: { .key => 1 +< .value };
 
-    has uint64 $!bits;
+    has uint64 $.bits;
     multi method new(UInt $bits) { self.bless: :$bits }
 
     submethod BUILD(:$!bits = 0) {}
 
     method elems { $!bits.polymod(2 xx *).sum }
-    multi method keys { gather loop (my $i = 0; $i < 64; $i++) { take @squares[$i] if 1 +& ($!bits +> $i) } }
+    multi method keys { gather loop (my (uint64 $i, int $k) = $!bits, 0; $i > 0; $k++, $i +>= 1) { take @squares[$k] if $i +& 1 } }
     multi method Bool { $!bits > 0 }
 
     method EXISTS-KEY(square $square) { so $!bits +& %squares{$square} }
@@ -26,33 +26,35 @@ class BitBoard {
 }
 
 # hybrid representation:
-# - keeping track on which piece is an which square
+# - keeping track on which piece is on which square
 # - keeping track on which squares are pieces on
 has Piece @!board[128];
-has BitBoard %!pieces{Piece};
+has Hash[BitBoard,color] %!pieces{piece-type};
 
-method     AT-KEY(square $square) { @!board[$square] }
-method EXISTS-KEY(square $square) { @!board[$square].defined }
+multi method AT-KEY    (square $square) { @!board[$square] }
+multi method AT-KEY    (Piece:D $piece) { %!pieces{$piece.type}{$piece.color} }
+multi method AT-KEY    (Piece:U $     ) { %!pieces{piece-type}{color} }
+
+multi method EXISTS-KEY(square $square) { @!board[$square].defined }
+multi method EXISTS-KEY(  Piece $piece) { %!pieces{$piece.type}{$piece.color}:exists }
 
 method DELETE-KEY(square $square) {
     with self{$square} -> $piece {
 	LEAVE @!board[$square] = Nil;
-	#.=new without %!pieces{$piece};
-	%!pieces{$piece}.remove: $square;
+	self{$piece}.remove: $square;
 	return @!board[$square];
     }
     else { fail "attempt to remove piece from empty square" }
 }
 method ASSIGN-KEY(square $square, Piece $piece) {
-    #.=new without %!pieces{$piece};
-    %!pieces{$piece}.add: $square;
+    self{$piece}.add: $square;
     @!board[$square] = $piece;                     
 } 
 
 proto method find(Piece $piece) returns Set[square] {*}
-multi method find(Piece $piece) { Set[square].new: %!pieces{$piece}.keys }
+multi method find(Piece $piece) { Set[square].new: %!pieces{$piece.type}{$piece.color}.keys }
 multi method find(King $king) {
-    given %!pieces{$king} {
+    given self{$king} {
 	fail "too many {$king.color} kings" if .elems > 1;
 	return Set[square].new: .keys;
     }
@@ -60,15 +62,35 @@ multi method find(King $king) {
 
 multi method new(Str $board) { self.bless: :$board }
 
-submethod BUILD(Str :$board) {
-    constant %pieces = <p n b r q k> Z=> Pawn, Knight, Bishop, Rook, Queen, King;
-    for %pieces.values -> $piece {
-	for black, white -> $color { %!pieces{$piece.new($color)} .= new; }
+method ascii {
+    my $s = "   +------------------------+\n";
+    my @squares = square::{(8,7...1) X[R~] 'a'..'h'};
+    for @squares.rotor(8) -> @row {
+	state $r;
+	$s ~= " {8 - $r++} |";
+	for @row -> $square {
+	    my $piece = self{$square};
+	    $s ~= " {$piece ?? $piece.symbol !! '.'} ";
+	}
+	$s ~= "|\n";
     }
-    %!pieces{Piece}.=new;
+    $s ~= "   +------------------------+\n";
+    $s ~= "     a  b  c  d  e  f  g  h";
+    return $s;
+}
 
+submethod BUILD(Str :$board) {
+    for piece-type::{*} -> $type {
+	%!pieces{$type}.=new;
+	for black, white -> $color { %!pieces{$type}{$color}.=new }
+    }
+    .=new without %!pieces{piece-type};
+    .=new without %!pieces{piece-type}{color};
+    constant %PIECES = <p r n b q k> Z=> pawn, rook, knight, bishop, queen, king;
     with $board {
 	my $self = self;
+	my @board := @!board;
+	my %pieces := %!pieces;
 	Chess::FEN.parse:
 	$board,
 	actions => class {
@@ -76,12 +98,19 @@ submethod BUILD(Str :$board) {
 	    method rank($/) { $!s += 8 }
 	    method empty-squares($/) { $!s += +$/ }
 	    method piece($/) { $!s++ }
-	    method black-piece($/) { $self{square($!s)} = %pieces{$/.Str.lc}.new: black }
-	    method white-piece($/) { $self{square($!s)} = %pieces{$/.Str.lc}.new: white }
+	    method black-piece($/) {
+		my square $square = square($!s);
+		@board[$square] = my $piece = Piece.new: :type(%PIECES{$/.Str   }), :color(black);
+		%pieces{$piece.type}{$piece.color}.add: $square;
+	    }
+	    method white-piece($/) {
+		my square $square = square($!s);
+		@board[$square] = my $piece = Piece.new: :type(%PIECES{$/.Str.lc}), :color(white);
+		%pieces{$piece.type}{$piece.color}.add: $square;
+	    }
 	}.new;
     }
 }
-
 
 # RANK : ─ 
 # FILE : │
@@ -110,26 +139,6 @@ our constant $PROMOTION-RANK is export = rank(a1)|rank(a8);
 
 method pairs { @!board.pairs.grep: *.value }
 method all-pairs { square::{*}.sort(+*).map({ $_ => @!board[$_]}) }
-
-method is-pinned(square $square) returns Bool {
-    with self{$square} -> $piece {
-	my $king-square = self.kings($piece.color);
-	my &test-block = -> $t, @a, @b {
-	    my $a = first *.defined, self{|map {square($_)}, @a};
-	    my $b = first *.defined, self{|map {square($_)}, @b};
-	    if ($a,$b).one ~~ King {
-		($a, $b) = $b, $a if $b ~~ King;
-		return True if $a.color ~~ $piece.color && $b ~~ $t and $b.color ~~ ¬$piece.color;
-	    }
-	}
-	if    rank($king-square)  == rank($square)  { test-block Queen|Rook,   ($square, *+ 1 ^...^ * %%  8), ($square, *-1 ^... * %% 16) }
-	elsif file($king-square)  == file($square)  { test-block Queen|Rook,   ($square, *+16 ^...^ * > 128), ($square, *-16 ^...^ * < 0) }
-	elsif slash($king-square) == slash($square) { test-block Queen|Bishop, ($square, *+15 ^...^ {(($_ % 16) > 7) || $_ > 128}), ($square, *-15 ^...^ { ($_ < 0) || (($_ % 16) > 7) }) }
-	elsif slosh($king-square) == slosh($square) { test-block Queen|Bishop, ($square, *+17 ^...^ {(($_ % 16) > 7) || $_ > 128}), ($square, *-17 ^...^ { ($_ < 0) || (($_ % 16) > 7) }) }
-	return False;
-    }
-    else { fail "no piece on $square" }
-}
 
 proto method findSpecificAttackingPieces(Piece:D :$piece,  square :$to) {*}
 multi method findSpecificAttackingPieces(Piece   :$piece where Pawn, :$to) {
@@ -189,29 +198,13 @@ method unicode {
     $s ~= "\e[0m";
     return $s;
 }
-method ascii {
-    my $s = "   +------------------------+\n";
-    my @squares = square::{(8,7...1) X[R~] 'a'..'h'};
-    for @squares.rotor(8) -> @row {
-	state $r;
-	$s ~= " {8 - $r++} |";
-	for @row -> $square {
-	    my $piece = self{$square};
-	    $s ~= " {$piece ?? $piece.symbol !! '.'} ";
-	}
-	$s ~= "|\n";
-    }
-    $s ~= "   +------------------------+\n";
-    $s ~= "     a  b  c  d  e  f  g  h";
-    return $s;
-}
 
 method attacked(color :$color, square :$square) returns Bool {
     self!attackers(:$color, :$square).head.defined
 }
 
 method isKingAttacked(color $color --> Bool) {
-    with self.find(King.new($color)).pick -> $square {
+    with self.find(Piece.new(:type(king), :$color)).pick -> $square {
 	return self.attacked(:color(¬$color), :$square)
     }
     else { return False }
