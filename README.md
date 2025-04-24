@@ -44,6 +44,14 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 ## General utilities
 
+### Graphical display
+
+#### With unicode and escape codes
+
+An alternative to ascii is unicode with escape codes.  It looks better on a dark background.
+
+![unicode and escape codes display](https://i.imgur.com/a/axFRvcu.png)
+
 ### Graphical display in the terminal with Kitty's graphics protocol
 
 ![showing the start position in kitty](https://i.imgur.com/aNAXmJS.png)
