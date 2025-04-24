@@ -152,7 +152,7 @@ method input-moves(Chess::Position $from) is export {
 					$state = IDLE;
 					$selected-square = Nil;
 				    } elsif $position.moves(:$selected-square).map(*.LAN.substr(0,4)).any eq "$selected-square$square" {
-					if $position{$selected-square} ~~ Pawn && rank($square) == PROMOTION-RANK {
+					if $position{$selected-square} ~~ Pawn && rank($square) == $PROMOTION-RANK {
 					    print "\rplease type q, b, n or r to pick promotion piece\e[K";
 					    $state = PROMOTION;
 					    $promotion-square = $square;
