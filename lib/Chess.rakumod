@@ -35,9 +35,7 @@ sub term:<startpos> is export { Chess::Position.new }
 
 multi infix:<*>(Chess::Position $position, SAN $move --> Chess::Position) is export {
     use Chess::Moves;
-    try my Move $move-object .= new: $move, :color($position.turn), :board($position);
-    fail "cannot make move `$move` in position `{$position.fen}`" if $!;
-    $position.new: $move-object;
+    $position.new: Move.new: $move, :color($position.turn), :board($position);
 }
 
 proto legal-moves($) is export {*}
