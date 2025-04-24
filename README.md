@@ -50,7 +50,7 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 An alternative to ascii is unicode with escape codes.  It looks better on a dark background.
 
-![unicode and escape codes display](https://i.imgur.com/a/axFRvcu.png)
+![unicode and escape codes display](https://i.imgur.com/AkVKezp.png)
 
 ### Graphical display in the terminal with Kitty's graphics protocol
 
