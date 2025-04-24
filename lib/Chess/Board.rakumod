@@ -143,8 +143,9 @@ method all-pairs { square::{*}.sort(+*).map({ $_ => @!board[$_]}) }
 proto method findSpecificAttackingPieces(Piece:D :$piece,  square :$to) {*}
 multi method findSpecificAttackingPieces(Piece   :$piece where Pawn, :$to) {
     gather for $piece.offsets[2,3] -> $offset {
-	try my $square = square($to - $offset);
-	next if $!;
+	my $diff = $to - $offset;
+	next unless $diff ~~ a8..h1 && $diff % 16 < 8;
+	my $square = square($diff);
 	with self{$square} {
 	    take $square if .symbol eq $piece.symbol
 	}
@@ -152,8 +153,9 @@ multi method findSpecificAttackingPieces(Piece   :$piece where Pawn, :$to) {
 }
 multi method findSpecificAttackingPieces(Piece   :$piece where King|Knight,       :$to) {
     gather for $piece.offsets -> $offset {
-	try my $square = square($to + $offset);
-	next if $!;
+	my $sum = $to + $offset;
+	next unless $sum ~~ a8..h1 && $sum % 16 < 8;
+	my $square = square($sum);
 	with self{$square} {
 	    take $square if .symbol eq $piece.symbol
 	}
@@ -164,8 +166,9 @@ multi method findSpecificAttackingPieces(Piece  :$piece where Bishop|Rook|Queen,
 	my square $square = $to;
 
 	repeat {
-	    try $square = square($square + $offset);
-	    next COLLECT if $!;
+	    my $sum = $square + $offset;
+	    next COLLECT unless $sum ~~ a8..h1 && $sum % 16 < 8;
+	    $square = square($sum);
 	} until self{$square}.defined;
 
 	my Piece $candidate = self{$square};
