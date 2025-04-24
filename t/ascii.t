@@ -26,4 +26,4 @@ is $position.ascii, $output, "ASCII board";
 
 done-testing;
 
-#vi: ft=raku nu
+# vi: ft=raku nu
