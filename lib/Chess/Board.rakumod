@@ -203,7 +203,7 @@ method unicode {
 }
 
 method attacked(color :$color, square :$square) returns Bool {
-    self!attackers(:$color, :$square).head.defined
+    self.attackers(:$color, :$square).head.defined
 }
 
 method isKingAttacked(color $color --> Bool) {
@@ -213,7 +213,7 @@ method isKingAttacked(color $color --> Bool) {
     else { return False }
 }
 
-method !attackers(color :$color, square :$square) {
+method attackers(color :$color, square :$square) {
     constant $RAYS = Blob[int8].new: <
 	17 0 0 0 0 0 0 16 0 0 0 0 0 0 15 0 0 17 0 0 0
 	0 0 16 0 0 0 0 0 15 0 0 0 0 17 0 0 0 0 16 0 0 0
