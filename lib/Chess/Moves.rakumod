@@ -213,9 +213,7 @@ role Promotion[piece:D $promotion] is export {
 	$board{self.to} = $promotion given $board{self.from}:delete;
     }
     method uint(Move::FullyDefined:) {
-	self.Move::uint + %(
-	    knight, bishop, rook, queen Z=> 1..4
-	){$promotion} +< 12;
+	self.Move::uint + (%(wn, wb, wr, wq Z=> 1..4){$promotion ≡ white ?? $promotion !! ¬$promotion} +& 7) +< 12;
     }
 }
 
