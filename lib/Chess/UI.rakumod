@@ -94,8 +94,8 @@ method input-moves(Chess::Position $from) is export {
 
     my enum State <IDLE ONE-SQUARE-IS-SELECTED PROMOTION>;
     my State $state = IDLE;
-    my square ($selected-square, $promotion-square);
-    my square $square;
+    my Square ($selected-square, $promotion-square);
+    my Square $square;
 
     my @undo-stack;
     sub select-square($square) {
@@ -103,10 +103,10 @@ method input-moves(Chess::Position $from) is export {
 	    @undo-stack.push:
 	    Chess::Graphics::highlight-square $square, :$placement-id,
 	    z => $z + ($position{$square}:exists ?? 1 !! 0);
-	    if $position{$square}.color ~~ $position.turn {
+	    if $position{$square} ≡ $position.turn {
 		my @moves = $position.moves(:$square);
 		@undo-stack.push:
-		Chess::Graphics::highlight-moves-destinations(@moves, :$placement-id, z => $z + 1);
+		Chess::Graphics::highlight-moves-destinations(@moves, :$placement-id, z => $z + 1, :$position);
 	    }
 	}
     }
@@ -117,9 +117,9 @@ method input-moves(Chess::Position $from) is export {
 	    when 'q' { proceed if $state ~~ PROMOTION; self.set-done; done }
 	    when <q b n r>.any {
 		if $state ~~ PROMOTION {
-		    my $move = Promotion.new: :from($selected-square), :to($promotion-square), :promotion(%( <q b r n> Z=> Queen, Bishop, Rook, Knight ){$_});
+		    my $move = Promotion.new: :from($selected-square), :to($promotion-square), :promotion(%( <q b r n> Z=> queen, bishop, rook, knight ){$_});
 		    Chess::Graphics::make-move $move, :$position, :$placement-id, :$z;
-		    $position .= new: $position, $move;
+		    $position.make: $move;
 		    $state = IDLE;
 		}
 	    }
@@ -129,17 +129,17 @@ method input-moves(Chess::Position $from) is export {
 		my ($dx, $dy) = ($x, $y) Z- @upper-left;
 		my ($c, $r) = ($dx, $dy) »div» $*square-size;
 		if $c&$r ~~ ^8 {
-		    my $hovered-square = square($r +< 4 + $c);
+		    my Square $hovered-square = $r +< 4 + $c;
 		    $square //= $hovered-square;
 		    if $square !== $hovered-square {
-			print "\r$square -> $hovered-square\e[K";
+			print "\r{square-enum($square)} -> {square-enum($hovered-square)}\e[K";
 			$square = $hovered-square;
 		    }
 		    if .button.defined {
 			if .button == 1 && .pressed && !.motion {
 			    given $state {
 				when IDLE {
-				    if $position{$square}:exists && $position{$square}.color ~~ $position.turn {
+				    if $position{$square}:exists && $position{$square} ≡ $position.turn {
 					select-square $square;
 					$state = ONE-SQUARE-IS-SELECTED;
 					$selected-square = $square;
@@ -148,20 +148,22 @@ method input-moves(Chess::Position $from) is export {
 				when ONE-SQUARE-IS-SELECTED {
 				    use Chess::Moves;
 				    unselect-square($square);
+				    my $lan = ($selected-square, $square).map({square-enum($_)}).fmt("%s", '');
 				    if $square == $selected-square {
 					$state = IDLE;
 					$selected-square = Nil;
-				    } elsif $position.moves(:$selected-square).map(*.LAN.substr(0,4)).any eq "$selected-square$square" {
-					if $position{$selected-square} ~~ Pawn && rank($square) == $PROMOTION-RANK {
+				    }
+				    elsif $position.moves(:$selected-square).map(*.LAN.substr(0,4)).any eq $lan {
+					if $position{$selected-square} ~~ pawn && rank($square) == $PROMOTION-RANK {
 					    print "\rplease type q, b, n or r to pick promotion piece\e[K";
 					    $state = PROMOTION;
 					    $promotion-square = $square;
 					}
 					else {
-					    #print "\rmove is $selected-square$square\e[K";
-					    my $move = Move.new("$selected-square$square")/$position;
+					    print "\rmove is $lan\e[K";
+					    my $move = Move.new("$lan")/$position;
 					    Chess::Graphics::make-move $move, :$position, :$placement-id, :$z;
-					    $position.=new: $position, $move;
+					    $position.make: $move;
 					    $state = IDLE;
 					    $selected-square = Nil;
 					}
@@ -173,7 +175,7 @@ method input-moves(Chess::Position $from) is export {
 			    }
 			}
 		    }
-		    elsif $state ~~ IDLE && ($position{$square}:exists) && $position{$square}.color ~~ $position.turn
+		    elsif $state ~~ IDLE && ($position{$square}:exists) && $position{$square} ≡ $position.turn
 			or $state ~~ ONE-SQUARE-IS-SELECTED && $square == $position.moves(:square($selected-square))».to.any 
 		    { print "\e]22;hand\e\\" }
 		    else { print "\e]22;not-allowed\e\\" }

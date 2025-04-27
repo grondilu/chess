@@ -3,74 +3,84 @@ use Chess::FEN;
 use Chess::Colors;
 use Chess::Pieces;
 
-# https://en.wikipedia.org/wiki/0x88
-enum square is export ((([1..8] .reverse) X[R~] 'a'..'h') Z=> ((0, 16 ... *) Z[X+] ^8 xx 8).flat);
+#| https://en.wikipedia.org/wiki/0x88
+subset Square of UInt is export where { not $_ +& 0x88 }
+enum square-enum is export ((([1..8] .reverse) X[R~] 'a'..'h') Z=> grep Square, ^Inf);
+our constant @squares = square-enum::{*}.sort(*.value);
 
-class BitBoard {
-    constant @squares = square::{*}.sort: *.value;
-    constant %squares = @squares.antipairs.map: { .key => 1 +< .value };
+#| rank: ─, file: │, slash: ╱, slosh: ╲
+sub rank (Square $sq) is export { $sq +>      4 }
+sub file (Square $sq) is export { $sq +&  0b111 }
+sub slash(Square $sq) is export { $sq mod    15 }
+sub slosh(Square $sq) is export { $sq mod    17 }
+constant %RANK  = @squares.sort(&file).classify(&rank );
+constant %FILE  = @squares.sort(&rank).classify(&file );
+constant %SLASH = @squares.sort(&file).classify(&slash);
+constant %SLOSH = @squares.sort(&file).classify(&slosh);
+method rank (Square $sq) { self{|%RANK{  rank($sq)}} }
+method file (Square $sq) { self{|%FILE{  file($sq)}} }
+method slash(Square $sq) { self{|%SLASH{slash($sq)}} }
+method slosh(Square $sq) { self{|%SLOSH{slosh($sq)}} }
 
-    has uint64 $.bits;
-    multi method new(UInt $bits) { self.bless: :$bits }
+multi prefix:<~>(Square $_ --> Str) is export { ('a'..'h')[.&file] ~ (1..8)[7-.&rank] }
 
-    submethod BUILD(:$!bits = 0) {}
+# Double(hybrid?) representation
+# ==============================
 
-    method elems { $!bits.polymod(2 xx *).sum }
-    multi method keys { gather loop (my (uint64 $i, int $k) = $!bits, 0; $i > 0; $k++, $i +>= 1) { take @squares[$k] if $i +& 1 } }
-    multi method Bool { $!bits > 0 }
+#|(
+    Keeping track of which piece is on a given square.
+    Here the length of 128 is due to the use of a 0x88 board
+)
+has piece @.board[128];
+#|(
+    Keeping track of which squares a given piece is on.
+    The first element of this buffer is not used
+    due to the structure of the piece enum.
+)
+has buf64 $.bitboard;
 
-    method EXISTS-KEY(square $square) { so $!bits +& %squares{$square} }
+sub index-to-square(int8 $i where ^64 --> Square) { ($i +> 3) +< 4 +| $i +& 0b111 }
+sub square-to-index(Square $s --> uint8) { my uint8 $ = rank($s) +< 3 +| file($s) }
 
-    method add   (square $square) { $!bits +|= %squares{$square} }
-    method remove(square $square) { $!bits +^= %squares{$square} }
+multi method AT-KEY(Square $square) { @!board[$square] }
+multi method AT-KEY(piece $piece) {
+    Set[Square].new:
+    gather loop (my (int8 $i, uint64 $bits) = 0, $!bitboard[$piece]; $bits > 0; $i++) {
+	take index-to-square($i) if $bits +& 1;
+	$bits +>= 1;
+    }
 }
 
-# hybrid representation:
-# - keeping track on which piece is on which square
-# - keeping track on which squares are pieces on
-has Piece @!board[128];
-has Hash[BitBoard,color] %!pieces{piece-type};
+multi method EXISTS-KEY(Square $square) { @!board[$square].defined }
+multi method EXISTS-KEY(  piece $piece) { $!bitboard[$piece] > 0 }
 
-multi method AT-KEY    (square $square) { @!board[$square] }
-multi method AT-KEY    (Piece:D $piece) { %!pieces{$piece.type}{$piece.color} }
-multi method AT-KEY    (Piece:U $     ) { %!pieces{piece-type}{color} }
-
-multi method EXISTS-KEY(square $square) { @!board[$square].defined }
-multi method EXISTS-KEY(  Piece $piece) { %!pieces{$piece.type}{$piece.color}:exists }
-
-method DELETE-KEY(square $square) {
-    with self{$square} -> $piece {
+method DELETE-KEY(Square $square) {
+    with self{$square} {
 	LEAVE @!board[$square] = Nil;
-	self{$piece}.remove: $square;
+	$!bitboard[$_] +&= +^(1 +< square-to-index $square);
 	return @!board[$square];
     }
     else { fail "attempt to remove piece from empty square" }
 }
-method ASSIGN-KEY(square $square, Piece $piece) {
-    self{$piece}.add: $square;
+multi method ASSIGN-KEY(Square $square, piece:D $piece) {
+    $!bitboard[+$piece] +|= 1 +< square-to-index $square;
     @!board[$square] = $piece;                     
 } 
-
-proto method find(Piece $piece) returns Set[square] {*}
-multi method find(Piece $piece) { Set[square].new: %!pieces{$piece.type}{$piece.color}.keys }
-multi method find(King $king) {
-    given self{$king} {
-	fail "too many {$king.color} kings" if .elems > 1;
-	return Set[square].new: .keys;
+multi method ASSIGN-KEY(Square $square, piece:U $piece) {
+    with self{$square} {
+	$!bitboard[$_] +&= +^(1 +< square-to-index $square);
     }
-}
-
-multi method new(Str $board) { self.bless: :$board }
+    @!board[$square] = Nil;                     
+} 
 
 method ascii {
     my $s = "   +------------------------+\n";
-    my @squares = square::{(8,7...1) X[R~] 'a'..'h'};
     for @squares.rotor(8) -> @row {
 	state $r;
 	$s ~= " {8 - $r++} |";
 	for @row -> $square {
 	    my $piece = self{$square};
-	    $s ~= " {$piece ?? $piece.symbol !! '.'} ";
+	    $s ~= " {$piece.defined ?? symbol($piece) !! '.'} ";
 	}
 	$s ~= "|\n";
     }
@@ -79,108 +89,10 @@ method ascii {
     return $s;
 }
 
-submethod BUILD(Str :$board) {
-    for piece-type::{*} -> $type {
-	%!pieces{$type}.=new;
-	for black, white -> $color { %!pieces{$type}{$color}.=new }
-    }
-    .=new without %!pieces{piece-type};
-    .=new without %!pieces{piece-type}{color};
-    constant %PIECES = <p r n b q k> Z=> pawn, rook, knight, bishop, queen, king;
-    with $board {
-	my $self = self;
-	my @board := @!board;
-	my %pieces := %!pieces;
-	Chess::FEN.parse:
-	$board,
-	actions => class {
-	    has UInt $!s = 0;
-	    method rank($/) { $!s += 8 }
-	    method empty-squares($/) { $!s += +$/ }
-	    method piece($/) { $!s++ }
-	    method black-piece($/) {
-		my square $square = square($!s);
-		@board[$square] = my $piece = Piece.new: :type(%PIECES{$/.Str   }), :color(black);
-		%pieces{$piece.type}{$piece.color}.add: $square;
-	    }
-	    method white-piece($/) {
-		my square $square = square($!s);
-		@board[$square] = my $piece = Piece.new: :type(%PIECES{$/.Str.lc}), :color(white);
-		%pieces{$piece.type}{$piece.color}.add: $square;
-	    }
-	}.new;
-    }
-}
-
-# RANK : ─ 
-# FILE : │
-# SLASH : ╱
-# SLOSH : ╲
-
-sub rank (square $sq) is export { $sq +>  4 }
-sub file (square $sq) is export { $sq +& 15 }
-sub slash(square $sq) is export { $sq  % 15 }
-sub slosh(square $sq) is export { $sq  % 17 }
-
-constant %RANK  = square::{*}.sort(&file).classify(&rank );
-constant %FILE  = square::{*}.sort(&rank).classify(&file );
-constant %SLASH = square::{*}.sort(&file).classify(&slash);
-constant %SLOSH = square::{*}.sort(&file).classify(&slosh);
-
-method rank (square $sq) { self{|%RANK{  rank($sq)}} }
-method file (square $sq) { self{|%FILE{  file($sq)}} }
-method slash(square $sq) { self{|%SLASH{slash($sq)}} }
-method slosh(square $sq) { self{|%SLOSH{slosh($sq)}} }
-
-subset en-passant-square of square is export where /<[36]>$/;
-
-our constant %SECOND-RANK    is export = (white) => rank(a2), (black) => rank(a7);
-our constant $PROMOTION-RANK is export = rank(a1)|rank(a8);
-
-method pairs { @!board.pairs.grep: *.value }
-method all-pairs { square::{*}.sort(+*).map({ $_ => @!board[$_]}) }
-
-proto method findSpecificAttackingPieces(Piece:D :$piece,  square :$to) {*}
-multi method findSpecificAttackingPieces(Piece   :$piece where Pawn, :$to) {
-    gather for $piece.offsets[2,3] -> $offset {
-	my $diff = $to - $offset;
-	next unless $diff ~~ a8..h1 && $diff % 16 < 8;
-	my $square = square($diff);
-	with self{$square} {
-	    take $square if .symbol eq $piece.symbol
-	}
-    }
-}
-multi method findSpecificAttackingPieces(Piece   :$piece where King|Knight,       :$to) {
-    gather for $piece.offsets -> $offset {
-	my $sum = $to + $offset;
-	next unless $sum ~~ a8..h1 && $sum % 16 < 8;
-	my $square = square($sum);
-	with self{$square} {
-	    take $square if .symbol eq $piece.symbol
-	}
-    }
-}
-multi method findSpecificAttackingPieces(Piece  :$piece where Bishop|Rook|Queen, :$to) {
-    gather COLLECT: for $piece.offsets -> $offset {
-	my square $square = $to;
-
-	repeat {
-	    my $sum = $square + $offset;
-	    next COLLECT unless $sum ~~ a8..h1 && $sum % 16 < 8;
-	    $square = square($sum);
-	} until self{$square}.defined;
-
-	my Piece $candidate = self{$square};
-	take $square if $candidate.symbol eq $piece.symbol;
-    }
-}
-
 method unicode {
-    constant $ls = qq{\e[48;5;244m};
-    constant $ds = qq{\e[48;5;28m};
+    constant $ls = "\e[48;5;244m";
+    constant $ds = "\e[48;5;28m";
     my $s = "   ┌────────────────────────┐\n";
-    my @squares = square::{(8,7...1) X[R~] 'a'..'h'};
     for @squares.rotor(8) -> @row {
 	state $r;
 	$s ~= "\e[0m {8 - $r++} │";
@@ -188,8 +100,8 @@ method unicode {
 	    state $c = 0;
 	    $s ~= ($c + $r) %% 2 ?? $ds !! $ls;
 	    with self{$square} {
-		$s ~= .color ~~ white ?? "\e[97m" !! "\e[30m";
-		$s ~= " {.unicode-symbol} ";
+		$s ~= $_ ≡ white ?? "\e[97m" !! "\e[30m";
+		$s ~= " $_ ";
 	    }
 	    else { $s ~= "   "; }
 	    $c++;
@@ -202,18 +114,81 @@ method unicode {
     return $s;
 }
 
-method attacked(color :$color, square :$square) returns Bool {
+multi method new(Str $board = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1}) {
+    self.bless: :$board
+}
+
+submethod BUILD(Str :$board) {
+    my piece @board[128];
+    my buf64 $bitboard .= new: 0 xx 13;
+    Chess::FEN.parse:
+    $board,
+    actions => class {
+	has UInt $!s = 0;
+	method empty-squares($/) { $!s += +$/ }
+	method piece($/) {
+	    my piece $piece = ($<black-piece> // $<white-piece>).made;
+	    @board[index-to-square $!s] = $piece;
+	    $bitboard[$piece] +|= 1 +< $!s++;
+	}
+	method black-piece($/) { make piece(9 + "pnbrqk".index($/.Str)); }
+	method white-piece($/) { make piece(1 + "PNBRQK".index($/.Str)); }
+    }.new;
+    @!board    = @board;
+    $!bitboard := $bitboard;
+}
+
+subset en-passant-square of Square is export where { .&rank == 2|5 };
+
+our constant %SECOND-RANK    is export = (white) => rank(a2), (black) => rank(a7);
+our constant $PROMOTION-RANK is export = rank(a1)|rank(a8);
+
+proto method findSpecificAttackingPieces(piece :$piece!,  Square :$to!) { map { square-enum::{~$_} }, {*} }
+multi method findSpecificAttackingPieces(pawn :$piece, :$to) {
+    gather for get-offsets($piece)[2,3] -> $offset {
+	my $square = $to - $offset;
+	next unless $square ~~ Square;
+	with self{$square} {
+	    take $square if $_ ~~ $piece;
+	}
+    }
+}
+multi method findSpecificAttackingPieces(piece :$piece where king|knight, :$to) {
+    gather for get-offsets($piece) -> $offset {
+	my $square = $to + $offset;
+	next unless $square ~~ Square;
+	with self{$square} {
+	    take $square if $_ ~~ $piece;
+	}
+    }
+}
+multi method findSpecificAttackingPieces(piece  :$piece where bishop|rook|queen, :$to) {
+    gather COLLECT: for get-offsets($piece) -> $offset {
+	my $square = $to;
+	repeat {
+	    $square += $offset;
+	    next COLLECT unless $square ~~ Square;
+	} until self{$square}.defined;
+	my piece $candidate = self{$square};
+	take $square if $candidate ~~ $piece;
+    }
+}
+
+method pairs { @!board.pairs.grep: *.value.defined }
+method all-pairs { @!board.pairs.grep: { .key ~~ Square } }
+
+method attacked(color :$color, Square :$square) returns Bool {
     self.attackers(:$color, :$square).head.defined
 }
 
 method isKingAttacked(color $color --> Bool) {
-    with self.find(Piece.new(:type(king), :$color)).pick -> $square {
+    with self{$color ~~ white ?? wk !! bk}.pick -> $square {
 	return self.attacked(:color(¬$color), :$square)
     }
     else { return False }
 }
 
-method attackers(color :$color, square :$square) {
+method attackers(color :$color, Square :$square) {
     constant $RAYS = Blob[int8].new: <
 	17 0 0 0 0 0 0 16 0 0 0 0 0 0 15 0 0 17 0 0 0
 	0 0 16 0 0 0 0 0 15 0 0 0 0 17 0 0 0 0 16 0 0 0
@@ -228,28 +203,28 @@ method attackers(color :$color, square :$square) {
 	0 -16 0 0 0 0 0 -17 0 0 -15 0 0 0 0 0 0 -16 0 0 0
 	0 0 0 -17
     >;
-    gather for square::{*} -> $i {
+    gather for @squares -> Square $i {
 	next without my $piece = self{$i};
-	next unless $piece.color ~~ $color;
-	next if $i ~~ $square;
+	next unless $piece ≡ $color;
+	next if $i == $square;
 	my $difference = $i - $square;
 	my $index = $difference + 119;
-	if $piece.attacks($index) {
-	    if $piece ~~ Pawn {
+	if $piece attacks $index {
+	    if $piece ~~ pawn {
 		if
-		$difference > 0 && $piece.color ~~ white ||
-		$difference ≤ 0 && $piece.color ~~ black {
+		$difference > 0 && $piece ≡ white ||
+		$difference ≤ 0 && $piece ≡ black {
 		    take $i;
 		}
 		next;
 	    }
-	    elsif $piece ~~ Knight|King { take $i; }
+	    elsif $piece ~~ knight|king { take $i; }
 	    else {
 		my $offset = $RAYS[$index];
 		my $j = $i + $offset;
 		my Bool $blocked = False;
 		while $j !== $square {
-		    with self{square($j)} {
+		    with self{$j} {
 			$blocked = True;
 			last;
 		    }

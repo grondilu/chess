@@ -6,7 +6,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.28.9",
+    "version" : "0.30.0",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
@@ -38,9 +38,8 @@
 	"CSI"                     : "lib/CSI.rakumod"
     },
     "resources" : [
-	    "images/checkerboard.png",
-	    "images/green-square.png",
-	    "images/green-circle.png",
+	    "images/move-dest.svg",
+	    "images/oc.move-dest.svg",
 	    "images/piece/cburnett/b.svg",
 	    "images/piece/cburnett/k.svg",
 	    "images/piece/cburnett/n.svg",

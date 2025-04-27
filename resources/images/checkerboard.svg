@@ -1,0 +1,15 @@
+<svg width="400" height="400" viewBox="0 0 8 8">
+  <style>
+    .light { fill: #F5E8C7; }
+    .dark { fill: #A67C5B; }
+  </style>
+  <defs>
+    <pattern id="checker" width="2" height="2" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="1" height="1" class="light"/>
+      <rect x="1" y="1" width="1" height="1" class="light"/>
+      <rect x="1" y="0" width="1" height="1" class="dark"/>
+      <rect x="0" y="1" width="1" height="1" class="dark"/>
+    </pattern>
+  </defs>
+  <rect width="8" height="8" fill="url(#checker)"/>
+</svg>

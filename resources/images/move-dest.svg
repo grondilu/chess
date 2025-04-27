@@ -1,0 +1,20 @@
+<svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+  <!--
+	  from https://github.com/lichess-org/chessground/blob/master/assets/chessground.brown.css :
+	  radial-gradient(
+		  rgba(20, 85, 30, 0.5) 22%,
+		  #208530 0,
+		  rgba(0, 0, 0, 0.3) 0,
+		  rgba(0, 0, 0, 0) 0);
+  -->
+    <radialGradient id="grad" cx="50%" cy="50%" r="50%" spreadMethod="pad">
+      <stop offset="22%" stop-color="rgb(20,85,30)" stop-opacity="0.5" />
+      <stop offset="0%"  stop-color="rgb(20,85,30)" stop-opacity="1" />
+      <stop offset="0%"  stop-color="rgb(0,0,0)"    stop-opacity="0.3" />
+      <stop offset="0%"  stop-color="rgb(0,0,0)"    stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="500" height="500" fill="url(#grad)" />
+</svg>
+

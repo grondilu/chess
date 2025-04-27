@@ -9,14 +9,14 @@ sub stripSAN(SAN $move) { $move.subst(/<[+#]>?<[!?]>*$/, '') }
 our sub getDisambiguator(Move $move, Chess::Position $position) {
     use Chess::Board;
     use Chess::Pieces;
-    my square ($from, $to) = $move.from, $move.to;
-    my Piece $piece = $position{$move.from};
+    my Square ($from, $to) = $move.from, $move.to;
+    my piece $piece = $position{$move.from};
     my UInt ($ambiguities, $sameRank, $sameFile) = 0 xx 3;
     for $position.moves {
 	my $ambigFrom  = .from;
 	my $ambigTo    = .to;
 	my $ambigPiece = $position{.from};
-	if $piece.WHAT ~~ $ambigPiece.WHAT && $from !~~ $ambigFrom && $to ~~ $ambigTo {
+	if ($piece +& 7) == ($ambigPiece +& 7) && $from !~~ $ambigFrom && $to ~~ $ambigTo {
 	    $ambiguities++;
 	    $sameRank++ if rank($from) == rank($ambigFrom);
 	    $sameFile++ if file($from) == file($ambigFrom);

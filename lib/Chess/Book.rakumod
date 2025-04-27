@@ -12,26 +12,40 @@ multi method new(IO::Path $path where /'.pgn'$/) { self.new: $path.slurp: :close
 
 multi method new(Str $pgn) { self.new: Chess::PGN.parse: $pgn }
 multi method new(Match $/) {
+    self.bless: data => [~]
+    gather {
+	gather for $<game> -> $/ {
+	    my Chess::Position $position .= new;
 
-    gather for $<game> -> $/ {
-	my Chess::Position $position .= new;
+	    for $<movetext-section><move>»<SAN> {
+		my Move $move .= new: .Str, :color($position.turn), :board($position);
+		LEAVE $position.make: $move;
 
-	for $<movetext-section><move>»<SAN> {
-	    my Move $move .= new: .Str, :color($position.turn), :board($position);
-
-	    my Int $weight = do given $<game-termination> {
-		when '1/2-1/2'|'½-½' { 1 }
-		when '1-0' { $position.turn ~~ white ?? 2 !! 0; }
-		when '0-1' { $position.turn ~~ black ?? 2 !! 0; }
-		default { 1 }
+		my Int $weight = do given $<game-termination> {
+		    when '1/2-1/2'|'½-½' { 1 }
+		    when '1-0' { $position.turn ~~ white ?? 2 !! 0; }
+		    when '0-1' { $position.turn ~~ black ?? 2 !! 0; }
+		    default { 1 }
+		}
+		take $position.uint => %( :move($move.uint), :$weight );
 	    }
-	    take $position.fen => %( :move(.Str), :$weight );
-	    $position.make: $move;
-	}
-    }.classify(*.key, :as(*.value))
-    .map({ .key => .value.classify({.<move>}, :as({.<weight>})) })
-    .map({ .key => .value.map({ .key => .value.sum }) })
-    
+	}.classify(*.key, :as(*.value))
+	.map({ .key => .value.classify({.<move>}, :as({.<weight>})).map({ .key => .value.sum }) })
+	.sort(*.key)
+	.map(
+	    {
+		my $pos = .key;
+		for .value {
+		    my buf8 $buf .= new: 0 xx 16;
+		    $buf.write-uint64:  0,   $pos, BigEndian;
+		    $buf.write-uint16:  8,   .key, BigEndian;
+		    $buf.write-uint16: 10, .value, BigEndian;
+		    $buf.write-uint32: 12,      0, BigEndian;
+		    take $buf;
+		}
+	    }
+	)
+    }
 }
 
 

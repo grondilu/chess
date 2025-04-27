@@ -1,0 +1,12 @@
+<svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- radial-gradient(transparent 0%, transparent 80%, rgba(20, 85, 0, 0.3) 80%); -->
+    <radialGradient id="grad" cx="50%" cy="50%" r="50%" spreadMethod="pad">
+      <stop offset="0%"  stop-opacity="0.0"/>
+      <stop offset="80%" stop-opacity="0.0"/>
+      <stop offset="80%" stop-color="rgb(20,85,0)" stop-opacity="0.3"/>
+    </radialGradient>
+  </defs>
+  <rect width="500" height="500" fill="url(#grad)" />
+</svg>
+

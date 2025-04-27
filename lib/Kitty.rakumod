@@ -1,24 +1,21 @@
 unit module Kitty;
 
 # avoid edges of ID true range
-    constant margin   = 1000;
+constant margin   = 1000;
 our constant ID-RANGE = margin..(4294967295 - margin);
-our               %ID = <checkerboard green-square green-circle p P b B n N r R q Q k K> Z=> ID-RANGE.pick..*;
+our %ID = <
+    checkerboard
+    green-square move-dest oc.move-dest
+    p b n r q k
+    P B N R Q K
+> Z=> ID-RANGE.pick..*;
 
 our sub transmit-data(UInt :$square-size = 128, Str :$piece-set = 'cburnett') {
     for %ID {
 	my $magick;
-	if .key !~~ /:i ^<[pbnrqk]>$/ {
-	    my $geometry = join 'x', (.key eq 'checkerboard' ?? 8*$square-size !! $square-size) xx 2;
-	    $magick = run «magick - -resize $geometry png:-», :in, :out;
-	    $magick.in.write: %?RESOURCES{"images/{.key}.png"}.slurp(:bin);
-	    ;
-	}
-	else {
-	    my $geometry = join 'x', $square-size xx 2;
-	    $magick = run «magick -density 300 -background none - -resize $geometry png:-», :in, :out;
-	    $magick.in.say: %?RESOURCES{"images/piece/$piece-set/{.key}.svg"}.slurp;
-	}
+	my $geometry = join 'x', (.key eq 'checkerboard' ?? 8*$square-size !! $square-size) xx 2;
+	$magick = run «magick -density 300 -background none - -resize $geometry png:-», :in, :out;
+	$magick.in.say: %?RESOURCES{"images/" ~ (.key ~~ /^:i <[pbnrqk]> $/ ?? "piece/$piece-set/" !! '') ~ "{.key}.svg"}.slurp;
 	$magick.in.close;
 	print APC
 	$magick.out.slurp(:bin, :close),
