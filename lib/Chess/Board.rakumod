@@ -88,7 +88,6 @@ method ascii {
     $s ~= "     a  b  c  d  e  f  g  h";
     return $s;
 }
-
 method unicode {
     constant $ls = "\e[48;5;244m";
     constant $ds = "\e[48;5;28m";
@@ -112,6 +111,48 @@ method unicode {
     $s ~= "     a  b  c  d  e  f  g  h";
     $s ~= "\e[0m";
     return $s;
+}
+method kitty(Bool :$flip) {
+    use Kitty;
+    use Terminal::Size;
+    
+    my winsize $ws = terminal-size;
+    my ($rows, $cols) = $ws.rows, $ws.cols;
+    my ($window-height, $window-width) = $ws.ypixel, $ws.xpixel;
+    my ($cell-width, $cell-height) = $window-width div $cols, $window-height div $rows;
+
+    my $square-size = $cell-height;
+    once Kitty::transmit-data :$square-size;
+
+    my $placement-id = Kitty::ID-RANGE.pick;
+    my Str $kitty = Kitty::APC
+    a => 'p',
+    i => %Kitty::ID<checkerboard>,
+    p => $placement-id,
+    z => 0,
+    q => 1;
+
+    for @Chess::Board::squares -> $square {
+	with self{$square} -> $piece {
+	    my ($rank, $file) = rank($square), file($square);
+	    ($rank, $file).=map(7-*) if $flip;
+	    $kitty ~= Kitty::APC
+	    a => 'p',
+	    i => %Kitty::ID{symbol($piece)},
+	    p => $placement-id + 1 + $square,
+	    P => %Kitty::ID<checkerboard>,
+	    Q => $placement-id,
+	    H => ($file*$square-size) div $cell-width,
+	    X => ($file*$square-size) mod $cell-width,
+	    V => ($rank*$square-size) div $cell-height,
+	    Y => ($rank*$square-size) mod $cell-height,
+	    z => 1,
+	    q => 1
+	    ;
+	}
+    }
+
+    return $kitty;
 }
 
 multi method new(Str $board = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1}) {
