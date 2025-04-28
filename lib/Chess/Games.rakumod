@@ -28,8 +28,8 @@ class Game {
 	%!tag-pair
 	.sort({ tag-sort($^a.key, $^b.key) })
 	.map({ qq《[{.key} {.value}] 》}),
-	Q{},
-	join Q{ },
+	'',
+	join ' ',
 	|(@!moves.map(
 	    sub ($move) {
 		if $move ~~ SAN { return $move.SAN }
@@ -40,7 +40,7 @@ class Game {
 		    return move-to-SAN $move, $position
 		}
 	    }
-	).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
+	).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q[. ])),
 	%(
 	    (white-wins) => '1-0',
 	    (black-wins) => '0-1',
@@ -49,6 +49,13 @@ class Game {
 	){$!termination},
 	"\n"
 	;
+    }
+    method positions {
+	gather for @!moves -> $move {
+	    state Chess::Position $position .=new;
+	    LEAVE $position.make: $move;
+	    take $position.fen
+	}
     }
 }
 
