@@ -46,24 +46,16 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 ### Graphical display
 
-#### With unicode and escape codes
+In addition to the ASCII representation mentioned above,
+there are two other possibilities to display a chess position:
 
-An alternative to ascii is unicode with escape codes.  It looks better on a dark background.
+  - one is using unicode chess characters, along with escape code sequences to change the background and foreground colors of each square.
+  - the other is using [Kitty's graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).  This second solution is a bit slow
+  at startup, it requires [ImageMagick](https://imagemagick.org/script/command-line-tools.php) to be installed on your system,
+  and it's not very robust to things like terminal zoom or scrolling.  It looks very good though, using the same piece set as the default one
+  on lichess.
 
-![unicode and escape codes display](https://i.imgur.com/AkVKezp.png)
-
-### Graphical display in the terminal with Kitty's graphics protocol
-
-![showing the start position in kitty](https://i.imgur.com/aNAXmJS.png)
-
-[ImageMagick](https://imagemagick.org/script/command-line-tools.php) is also required to produce the PNG files as the images of the pieces are stored in SVG.
-
-Zooming in or out in Kitty will not scale the image of the chessboard up or down.  You can however set the dynamic variable `$*square-size` to
-pick a different board size.  This only works if you set this variable before the first execution of `show` though, as the image data is transmitted to kitty only once.
-
-
-![showing the start position in kitty, with a custom square size](https://i.imgur.com/KaqfJKu.png)
-
+![showing the start position ascii, unicode and kitty](https://i.imgur.com/yX5FAUt.png)
 
 ### Polyglot books
 
