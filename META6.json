@@ -6,13 +6,14 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.30.3",
+    "version" : "0.30.4",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
     "depends" : [ 
 	    "Base64",
 	    "URI::Encode",
+	    "Terminal::Size",
 	    "Terminal::ANSI",
 	    "Terminal::LineEditor"
     ],
@@ -38,9 +39,11 @@
 	"CSI"                     : "lib/CSI.rakumod"
     },
     "resources" : [
+	    "images/checkerboard.svg",
 	    "images/move-dest.svg",
 	    "images/last-move.svg",
 	    "images/oc.move-dest.svg",
+	    "images/green-square.svg",
 	    "images/piece/cburnett/b.svg",
 	    "images/piece/cburnett/k.svg",
 	    "images/piece/cburnett/n.svg",
