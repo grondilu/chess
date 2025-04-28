@@ -128,7 +128,7 @@ multi method new(::?CLASS:D: Move::FullyDefined $move) {
 	    $new.en-passant = $move.to - get-offsets($_)[0] if $move ~~ BigPawnMove;
 	}
     }
-    else { fail "there is no piece on square {$move.from}:\n{self.ascii}"; }
+    else { fail "there is no piece on square {square-enum($move.from)}:\n{self.ascii}"; }
     with $new{$move.to} {
 	if self{$move.from} ≡ .&Chess::Pieces::get-color {
 	    fail "can't capture a piece of the same color (move is {$move.raku}):\n{self.ascii}";
@@ -164,7 +164,7 @@ method make(::?CLASS:D: Move::FullyDefined $move) {
 	    $!en-passant = $move.to - get-offsets($_)[0] if $move ~~ BigPawnMove;
 	}
     }
-    else { fail "there is no piece on square {$move.from}:\n{self.ascii}"; }
+    else { fail "there is no piece on square {square-enum($move.from)}:\n{self.ascii}"; }
     with self{$move.to} {
 	if self{$move.from} ≡ Chess::Pieces::get-color($_) {
 	    fail "can't capture a piece of the same color (move is {$move.raku}):\n{self.ascii}";
