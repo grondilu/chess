@@ -205,7 +205,6 @@ role EnPassant is export {
 
 role Promotion[piece:D $promotion] is export {
     method LAN {
-	note $promotion.raku;
 	self.Move::LAN ~ symbol($promotion).lc
     }
     method pseudo-SAN { self.PawnMove::pseudo-SAN ~ '=' ~ $promotion.symbol.uc; }
