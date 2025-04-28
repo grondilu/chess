@@ -1,7 +1,6 @@
 unit module Chess::Games;
 use Chess::Position;
 use Chess::Moves;
-use Chess::SAN;
 
 enum Termination <white-wins black-wins draw unfinished>;
 
@@ -15,6 +14,8 @@ multi tag-sort($, str-tag $) { More }
 multi tag-sort(str-tag $a, str-tag $b) { seven-tag-roster::{$a} <=> seven-tag-roster::{$b} }
 multi tag-sort(Str $a, Str $b) { Order.pick }
 
+role SAN[Str $san] { method SAN { $san } }
+
 class Game {
     has %.tag-pair;
     has Move @.moves;
@@ -23,15 +24,23 @@ class Game {
     has Chess::Position $.initial-position;
 
     method pgn {
-	my Chess::Position @position = produce { $^a.new: $^b }, Chess::Position.new, |@!moves;
-	my @SAN = (@!moves Z, @position).map: -> ($a, $b) { move-to-SAN $a, $b }
 	join "\n",
 	%!tag-pair
 	.sort({ tag-sort($^a.key, $^b.key) })
 	.map({ qq《[{.key} {.value}] 》}),
 	Q{},
 	join Q{ },
-	|(@SAN.rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
+	|(@!moves.map(
+	    sub ($move) {
+		if $move ~~ SAN { return $move.SAN }
+		else {
+		    use Chess::SAN;
+		    (state Chess::Position $position).=new;
+		    LEAVE $position.make: $move;
+		    return move-to-SAN $move, $position
+		}
+	    }
+	).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q{. })),
 	%(
 	    (white-wins) => '1-0',
 	    (black-wins) => '0-1',
@@ -41,7 +50,6 @@ class Game {
 	"\n"
 	;
     }
-
 }
 
 our proto load($) {*}
@@ -52,8 +60,9 @@ multi load(Match $/) {
     gather for $<game> -> $/ {
 	my Chess::Position $position .= new;
 	my Move @moves;
-	for $<movetext-section><move>»<SAN> {
-	    @moves.push: my Move $move .= new: .Str, :color($position.turn), :board($position);
+	for $<movetext-section><move> -> $/ {
+	    my Move $move .= new: ~$<SAN>, :color($position.turn), :board($position);
+	    @moves.push: $move but SAN[$<SAN> ~ $<annotation>];
 	    $position.make: $move;
 	}
 	my Termination $termination =

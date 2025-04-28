@@ -21,9 +21,10 @@ rule movetext-section { <move>+ }
 regex tag-pair { \[ ~ \] [\s*<name=symbol>\s*<value=string>\s*] }
 
 rule move {
-  <move-number-indication>?\h*<SAN><[+#]>?[<[!?]> ** 1..2]? <NAG> * <RAV> *
+  <move-number-indication>?\h*<SAN><annotation> <NAG> * <RAV> *
 }
 
+token annotation { <[+#]>?[<[!?]> ** 1..2]? }
 rule RAV { \( ~ \) <move>* }
 rule move-number-indication { <integer>\.* }
 
