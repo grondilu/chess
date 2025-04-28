@@ -15,7 +15,9 @@ our sub transmit-data(UInt :$square-size = 128, Str :$piece-set = 'cburnett') {
 	my $magick;
 	my $geometry = join 'x', (.key eq 'checkerboard' ?? 8*$square-size !! $square-size) xx 2;
 	$magick = run «magick -density 300 -background none - -resize $geometry png:-», :in, :out;
-	$magick.in.say: %?RESOURCES{"images/" ~ (.key ~~ /^:i <[pbnrqk]> $/ ?? "piece/$piece-set/" !! '') ~ "{.key}.svg"}.slurp;
+	my $resource = "images/" ~ (.key ~~ /^:i <[pbnrqk]> $/ ?? "piece/$piece-set/" !! '') ~ "{.key}.svg";
+	#note "loading $resource";
+	$magick.in.say: %?RESOURCES{$resource}.slurp;
 	$magick.in.close;
 	print APC
 	$magick.out.slurp(:bin, :close),
