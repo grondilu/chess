@@ -1,4 +1,4 @@
-unit class Chess::Moves;
+unit module Chess::Moves;
 use Chess::PGN;
 use Chess::Colors;
 use Chess::Board;
