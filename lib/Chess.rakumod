@@ -37,6 +37,11 @@ multi infix:<*>(Chess::Position $position, SAN $move --> Chess::Position) is exp
     use Chess::Moves;
     $position.new: Move.new: $move, :color($position.turn), :board($position);
 }
+multi infix:<*=>(Chess::Position $position, SAN $move --> Chess::Position) is export {
+    use Chess::Moves;
+    $position.make: Move.new: $move, :color($position.turn), :board($position);
+    $position
+}
 
 proto legal-moves($) is export {*}
 multi legal-moves(Chess::Position $position) { $position.moves }
