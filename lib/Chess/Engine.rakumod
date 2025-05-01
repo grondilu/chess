@@ -39,7 +39,9 @@ method start {
 		    $!name = $<name>.Str;
 		    $!major-version = $<major-version>.UInt;
 		    $!minor-version = $<minor-version>.UInt;
-		} elsif /^ uciok $/ {
+		}
+		elsif /^ 'id name ' $<name> = [ <ident>+ ] / { $!name = $<name>.Str; }
+		elsif /^ uciok $/ {
 		    note "`uciok` received";
 		    done
 		}
@@ -67,7 +69,7 @@ method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500 --> 
 	my $command = "position";
 	with $position { $command ~= " fen {$position.fen}"; }
 	else           { $command ~= " startpos" }
-	$command ~= " moves {@moves.join: q[ ]}" if @moves;
+	$command ~= " moves {@moves.join: q[ ]}" with @moves;
 	$command ~= "\ngo movetime $movetime";
 	self.say: $command;
     }
@@ -84,41 +86,6 @@ method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500 --> 
 	}
     }
     return $best-move;
-}
-
-method self-play(UInt :$n = 10) {
-    use Chess::SAN;
-    my @moves = 'e2e4';
-
-    sub white-setup {
-	self.set-threads: 4;
-	self.set-skill-level: 20;
-	self.best-move: :@moves, :movetime(10_000);
-    }
-    sub black-setup {
-	self.set-threads: 1;
-	self.set-skill-level: 1;
-	self.best-move: :@moves, :movetime(500);
-    }
-    FULL-MOVE: for ^$n {
-	for &black-setup, &white-setup {
-	    try my $best-move = .().result;
-	    last FULL-MOVE if $!;
-	    @moves.push: $best-move.LAN;
-	}
-    }
-
-    join q{ }, (
-	(1..* X~ '. ') Z~
-	gather for @moves {
-	    state Chess::Position $position .= new;
-	    my $move = Move.new($_);
-	    try take move-to-SAN $move, $position;
-	    fail "could not get SAN from move {$move.LAN} in position {$position.fen}" if $!;
-	    $position .= new: $position, $move;
-	}.rotor(2, :partial)
-	.map: *.join(q{ })
-    )
 }
 
 method quit { 
