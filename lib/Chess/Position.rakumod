@@ -190,7 +190,7 @@ method fen returns Str {
 	%!castling-rights{white} ?? %(kingside, queenside Z=> <K Q>){%!castling-rights{white}.keys} !! '',
 	%!castling-rights{black} ?? %(kingside, queenside Z=> <k q>){%!castling-rights{black}.keys} !! ''
     ).flat.sort.join.subst(/^$/, '-'),
-    $!en-passant.defined ?? $!en-passant !! '-',
+    $!en-passant.defined ?? square-enum($!en-passant) !! '-',
     $!half-moves-count,
     $!move-number
 }
