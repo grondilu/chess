@@ -155,7 +155,7 @@ method kitty(Bool :$flip) {
     return $kitty;
 }
 
-multi method new(Str $board = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1}) {
+multi method new(Str $board where /^<Chess::FEN::board>/ = q{rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR}) {
     self.bless: :$board
 }
 

@@ -74,7 +74,7 @@ method attackers(Square :$square, color :$color = $!turn) {
     self.Chess::Board::attackers(:$square, :$color).Set
 }
 
-multi method new(Str $fen = startpos) {
+multi method new(Str $fen where { Chess::FEN.parse: $fen } = startpos) {
     use Chess::FEN;
     my color $turn;
     my Set[castling-right] %castling-rights{color};
@@ -97,10 +97,6 @@ multi method new(Str $fen = startpos) {
     }.new;
     self.bless: :board($fen.words.head), :$turn, :%castling-rights, :$en-passant, :$half-moves-count, :$move-number;
 }
-
-multi method new(::?CLASS:U: Move $) {...}
-
-multi method new(::?CLASS:D: Move $) {...}
 
 multi method new(::?CLASS:D: Move::FullyDefined $move) {
     my $new = self.bless:
