@@ -217,7 +217,7 @@ method moves(Bool :$legal = True, piece:U :$piece, UInt :$square) {
 		    $to = $from + get-offsets($pawn)[1];
 		    if $to ~~ Square {
 			if rank($from) == %SECOND-RANK{$us} && !self{$to} {
-			    take PawnMove.bless(:$from, :$to) but BigPawnMove;
+			    take PawnMove.bless(:$from, :$to);
 			}
 		    }
 		}

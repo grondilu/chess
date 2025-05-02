@@ -5,13 +5,13 @@ use Chess::Board;
 use Chess::Pieces;
 
 class Move is export {...}
+class PawnMove {...}
 
-subset KnightMove of Move is export where { wn attacks 119 + .to - .from };
+subset KnightMove of Move is export where { wn attacks 119 + .to - .from }
+subset BigPawnMove of PawnMove is export where { abs(rank(.to) - rank(.from)) == 2 }
 role capture is export {}
 
-class PawnMove {...}
 role EnPassant {...}
-role BigPawnMove {...}
 role Promotion {...}
 class KingsideCastle {...}
 class QueensideCastle {...}
@@ -75,11 +75,8 @@ class Move {
 		elsif $color ~~ white && $to ~~ /4$/ or $color ~~ black && $to ~~ /5$/ {
 		    my $direction = $color ~~ white ?? +16 !! -16;
 		    my Square $from = $to + $direction;
-		    with $board{$from} { return PawnMove.new: :$from, :$to; }
-		    else {
-			$from = $to + 2*$direction;
-			return PawnMove.new(:$from, :$to) but BigPawnMove;
-		    }
+		    $from = $to + 2*$direction without $board{$from};
+		    return PawnMove.new(:$from, :$to);
 		}
 		my Square $from = $rank +< 4 + $file;
 		my PawnMove $move .=new: :$from, :$to;
@@ -180,10 +177,10 @@ class PawnMove is Move is export {
 	my Square ($from, $to) = $/[0].map: { square-enum::{$_} }
 	my ($delta-rank, $delta-file) = (&rank, &file).map: { abs(.($to) - .($from)) }
 	my $blessing = self.bless: :$from, :$to;
-	if    $delta-rank  == 2             { $blessing does BigPawnMove }
-	elsif $delta-rank|$delta-file !== 1 { fail "illegal pawn move" }
-	elsif file($to) !== file($from)     { $blessing does capture     }
-	with $/[1] { $blessing does Promotion[%(<b n r q> Z=> bishop, knight, rook, queen){$/[1]}] }
+	if    $delta-rank == 2 && $delta-file == 0  { return $blessing }
+	elsif $delta-rank|$delta-file !== 1         { fail "illegal pawn move" }
+	elsif file($to) !== file($from)             { $blessing does capture     }
+	with $/[1]                                  { $blessing does Promotion[%(<b n r q> Z=> bishop, knight, rook, queen){$_}] }
 	return $blessing;
     }
     method piece-type { pawn }
@@ -215,9 +212,5 @@ role Promotion[piece:D $promotion] is export {
 	self.Move::uint + (%(wn, wb, wr, wq Z=> 1..4){$promotion ≡ white ?? $promotion !! ¬$promotion} +& 7) +< 12;
     }
 }
-
-role BigPawnMove is export {}
-
-
 
 # vi: shiftwidth=4 nu
