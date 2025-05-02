@@ -1,4 +1,4 @@
-unit module Chess::Games;
+unit class Chess::Game;
 use Chess::Position;
 use Chess::Moves;
 
@@ -14,41 +14,39 @@ multi tag-sort($, str-tag $) { More }
 multi tag-sort(str-tag $a, str-tag $b) { seven-tag-roster::{$a} <=> seven-tag-roster::{$b} }
 multi tag-sort(Str $a, Str $b) { Order.pick }
 
-class Game {
-    has %.tag-pair;
-    has Move @.moves;
-    has Termination $.termination = unfinished;
+has %.tag-pair;
+has Move @.moves;
+has Termination $.termination = unfinished;
 
-    method pgn {
-	join "\n",
-	%!tag-pair
-	.sort({ tag-sort($^a.key, $^b.key) })
-	.map({ qq《[{.key} {.value}] 》}),
-	'',
-	join ' ',
-	|(@!moves.map(
-	    sub ($move) {
-		use Chess::SAN;
-		(state Chess::Position $position).=new;
-		LEAVE $position.make: $move;
-		return move-to-SAN $move, $position
-	    }
-	).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q[. ])),
-	%(
-	    (white-wins) => '1-0',
-	    (black-wins) => '0-1',
-	    (draw)       => '½-½',
-	    (unfinished) => '*'
-	){$!termination},
-	"\n"
-	;
-    }
-    method positions {
-	gather for @!moves -> $move {
-	    state Chess::Position $position .=new;
+method pgn {
+    join "\n",
+    %!tag-pair
+    .sort({ tag-sort($^a.key, $^b.key) })
+    .map({ qq《[{.key} {.value}] 》}),
+    '',
+    join ' ',
+    |(@!moves.map(
+	sub ($move) {
+	    use Chess::SAN;
+	    (state Chess::Position $position).=new;
 	    LEAVE $position.make: $move;
-	    take $position.fen
+	    return move-to-SAN $move, $position
 	}
+    ).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q[. ])),
+    %(
+	(white-wins) => '1-0',
+	(black-wins) => '0-1',
+	(draw)       => '½-½',
+	(unfinished) => '*'
+    ){$!termination},
+    "\n"
+    ;
+}
+method positions {
+    gather for @!moves -> $move {
+	state Chess::Position $position .=new;
+	LEAVE $position.make: $move;
+	take $position.fen
     }
 }
 
@@ -74,7 +72,7 @@ multi load(Match $/) {
 	    ){~$<game-termination>}
 	    ;
 	my %tag-pair = $<tag-pair-section><tag-pair>.map(-> $/ { Pair.new: ~$<name>, ~$<value> } );
-	take Game.new: :%tag-pair, :@moves, :$termination;
+	take ::?CLASS.new: :%tag-pair, :@moves, :$termination;
     }
 }
 multi load(IO::Path $pgn) { samewith $pgn.slurp }
