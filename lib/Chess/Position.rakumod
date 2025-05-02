@@ -157,7 +157,7 @@ method make(::?CLASS:D: Move::FullyDefined $move) {
 	}
 	when pawn {
 	    $!half-moves-count = 0;
-	    $!en-passant = $move.to - get-offsets($_)[0] if $move ~~ BigPawnMove;
+	    $!en-passant = $move.to - get-offsets($_)[0] if abs(rank($move.from) - rank($move.to)) == 2;
 	}
     }
     else { fail "there is no piece on square {square-enum($move.from)}:\n{self.ascii}"; }
