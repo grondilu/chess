@@ -14,14 +14,10 @@ multi tag-sort($, str-tag $) { More }
 multi tag-sort(str-tag $a, str-tag $b) { seven-tag-roster::{$a} <=> seven-tag-roster::{$b} }
 multi tag-sort(Str $a, Str $b) { Order.pick }
 
-role SAN[Str $san] { method SAN { $san } }
-
 class Game {
     has %.tag-pair;
     has Move @.moves;
-    has Termination $.termination;
-
-    has Chess::Position $.initial-position;
+    has Termination $.termination = unfinished;
 
     method pgn {
 	join "\n",
@@ -32,13 +28,10 @@ class Game {
 	join ' ',
 	|(@!moves.map(
 	    sub ($move) {
-		if $move ~~ SAN { return $move.SAN }
-		else {
-		    use Chess::SAN;
-		    (state Chess::Position $position).=new;
-		    LEAVE $position.make: $move;
-		    return move-to-SAN $move, $position
-		}
+		use Chess::SAN;
+		(state Chess::Position $position).=new;
+		LEAVE $position.make: $move;
+		return move-to-SAN $move, $position
 	    }
 	).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q[. ])),
 	%(
@@ -69,7 +62,7 @@ multi load(Match $/) {
 	my Move @moves;
 	for $<movetext-section><move> -> $/ {
 	    my Move $move .= new: ~$<SAN>, :color($position.turn), :board($position);
-	    @moves.push: $move but SAN[$<SAN> ~ $<annotation>];
+	    @moves.push: $move;
 	    $position.make: $move;
 	}
 	my Termination $termination =
