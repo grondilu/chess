@@ -25,16 +25,17 @@ class Move {
     method gist { self.LAN }
     multi method piece-type(KnightMove:) { knight }
     multi method move-pieces(FullyDefined: Chess::Board $board) {
-	my piece $from = $board{$!from};
-	my piece $to = $board{$!to};
+	my piece $from = $board{$!from}<>;
+	my piece $to = $board{$!to}<>;
 	$board{$!to} = $board{$!from}:delete;
 	return -> {
+	    $board{$!to}:delete;
 	    $board{$!from} = $from;
 	    $board{$!to}   = $to;
 	}
     }
     multi method pseudo-SAN(capture:) {
-	self.piece-type.symbol.uc ~ 'x' ~ $!to
+	self.piece-type.symbol.uc ~ 'x' ~ square-enum($!to)
     }
     method uint(FullyDefined:) {
 	# http://hgm.nubati.net/book_format.html
@@ -187,7 +188,7 @@ class PawnMove is Move is export {
     method pseudo-SAN(Move::FullyDefined:) {
 	file(self.from) == file(self.to) ?? 
 	~self.to !!
-	"{('a'..'h')[file(self.from)]}x{self.to}"
+	"{('a'..'h')[file(self.from)]}x{square-enum(self.to)}"
     }
 }
 
@@ -196,7 +197,10 @@ role EnPassant is export {
 	my &undo1 = self.Move::move-pieces($board);
 	my Square $square = rank(self.from) +< 4 + file(self.to);
 	my $record = $board{$square}:delete;
-	return -> { $board{$square} = $record; &undo1() }
+	return -> { 
+	    $board{$square} = $record;
+	    &undo1()
+	}
     }
 }
 
@@ -204,9 +208,16 @@ role Promotion[piece:D $promotion] is export {
     method LAN {
 	self.Move::LAN ~ symbol($promotion).lc
     }
-    method pseudo-SAN { self.PawnMove::pseudo-SAN ~ '=' ~ $promotion.symbol.uc; }
+    method pseudo-SAN { self.PawnMove::pseudo-SAN ~ '=' ~ symbol($promotion).uc; }
     method move-pieces(Move::FullyDefined: Chess::Board $board) {
+	my $to = $board{self.to};
+	my $from = $board{self.from};
 	$board{self.to} = $promotion given $board{self.from}:delete;
+	return -> {
+	    $board{self.to}:delete;
+	    $board{self.to} = $to;
+	    $board{self.from} = $from;
+	}
     }
     method uint(Move::FullyDefined:) {
 	self.Move::uint + (%(wn, wb, wr, wq Z=> 1..4){$promotion ≡ white ?? $promotion !! ¬$promotion} +& 7) +< 12;
