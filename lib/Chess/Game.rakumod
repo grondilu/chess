@@ -26,12 +26,15 @@ method pgn {
     '',
     join ' ',
     |(@!moves.map(
-	sub ($move) {
-	    use Chess::SAN;
-	    (state Chess::Position $position).=new;
-	    LEAVE $position.make: $move;
-	    return move-to-SAN $move, $position
-	}
+	{
+	    my Chess::Position $position .= new;
+	    sub ($move) {
+		use Chess::Pieces;
+		use Chess::SAN;
+		LEAVE $position.make: $move;
+		return move-to-SAN $move, $position;
+	    }
+	}()
     ).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q[. ])),
     %(
 	(white-wins) => '1-0',
