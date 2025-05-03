@@ -30,13 +30,20 @@ our sub getDisambiguator(Move $move, Chess::Position $position) {
 }
 
 sub move-to-SAN(Move $move, Chess::Position $position) returns SAN is export {
-    do given $position.moves.first({ .LAN eq $move.LAN }) {
-	when PawnMove|Castle { .pseudo-SAN }
+    do given $position.moves(:piece($position{$move.from})).first({ .LAN eq $move.LAN }) {
+	fail "could not find move in position \n{$position.fen}\n{$position.ascii}"
+	    unless .defined;
+	when PawnMove|Castle {
+	    .pseudo-SAN;
+	}
 	default {
-	    $position{$move.from}.symbol.uc ~
+	    use Chess::Pieces;  # for symbol
+	    use Chess::Board;   # for square-enum
+	    fail "pawn move not reckognized" if $position{$move.from} ~~ pawn and $move !~~ PawnMove;
+	    symbol($position{$move.from}).uc ~
 	    getDisambiguator($move, $position) ~
 	    ($position{$move.to}:exists ?? 'x' !! '') ~
-	    $move.to;
+	    square-enum($move.to);
 	}
     } ~ do given $position.new($move) {
 	when    Check     { '+' }
