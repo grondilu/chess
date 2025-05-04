@@ -1,6 +1,4 @@
 unit class Chess::Engine is Proc::Async;
-use Chess::Moves;
-use Chess::Position;
 
 has Supply $!lines;
 
@@ -56,19 +54,13 @@ method start {
     return $start;
 }
 
-method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500 --> Promise) {
+method best-move(Str :$fen, :@moves, UInt :$movetime = 500 --> Promise) {
     my Promise $best-move .= new;
-    with $position {
-	if $position.isCheckmate {
-	    LEAVE $best-move.keep(Nil);
-	    return $best-move;
-	}
-    }
     use Chess::UCI;
     start {
 	my $command = "position";
-	with $position { $command ~= " fen {$position.fen}"; }
-	else           { $command ~= " startpos" }
+	with $fen { $command ~= " fen $fen"; }
+	else      { $command ~= " startpos" }
 	$command ~= " moves {@moves.join: q[ ]}" with @moves;
 	$command ~= "\ngo movetime $movetime";
 	self.say: $command;
@@ -76,7 +68,7 @@ method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500 --> 
     start react {
 	whenever $!lines {
 	    if /^<Chess::UCI::best-move>/ {
-		$best-move.keep: Move.new(~$<Chess::UCI::best-move>) / $position;
+		$best-move.keep: ~$<Chess::UCI::best-move>;
 		done;
 	    } elsif /'score mate ' \-?\d+/ {
 		# this is forced checkmate so there's no best move
