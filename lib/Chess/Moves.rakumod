@@ -45,8 +45,28 @@ class Move {
 	7-rank($!to),
 	file($!to)
     }
-    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2$/) {
-	self.bless:
+    multi method new(
+	Str $ where /^(<[a..h]><[1..8]>)**2$/,
+	color :$color!,
+	Chess::Board :$board!
+    ) {
+	my ($from, $to) =
+	    square-enum::{$/[0][0]},
+	    square-enum::{$/[0][1]};
+	if $board{$from} ~~ pawn {
+	    return PawnMove.bless: :$from, :$to
+	}
+	elsif $board{$from} ~~ ($color ~~ white ?? wk !! bk) {
+	    if file($from) == 4 {
+		if file($to) == 6 {
+		    return KingsideCastle.new: :$color
+		}
+		elsif file($to) == 2 {
+		    return QueensideCastle.new: :$color
+		}
+	    }
+	}
+	return self.bless:
 	from => square-enum::{$/[0][0]},
 	to   => square-enum::{$/[0][1]}
     }

@@ -141,8 +141,8 @@ method deprive-of-castling-right(castling-right $castling-right, color :$color) 
     return -> { %!castling-rights{$color} = $castling-rights<> }
 }
 
-multi method make(::?CLASS:D: Str $san) {
-    samewith Move.new: $san, :color(self.turn), :board(self)
+multi method make(::?CLASS:D: Str $move-string) {
+    samewith Move.new: $move-string, :color(self.turn), :board(self)
 }
 multi method make(::?CLASS:D: Move::FullyDefined $move) {
     my @undo;
