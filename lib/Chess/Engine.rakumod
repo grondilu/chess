@@ -8,7 +8,7 @@ has Str $.command;
 has Str $.name;
 has UInt ($.major-version, $.minor-version);
 
-multi method new(Str $command = 'stockfish') { self.Proc::Async::new: $command, :w }
+multi method new(Str $command = 'stockfish') { self.Proc::Async::new: |$command.words, :w }
 
 submethod BUILD { $!lines = self.stdout.lines; }
 submethod TWEAK {
