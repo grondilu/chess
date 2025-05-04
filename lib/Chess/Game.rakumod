@@ -18,6 +18,15 @@ has %.tag-pair;
 has Move @.moves;
 has Termination $.termination = unfinished;
 
+multi method new(@moves where { .all ~~ /^[<[a..h]><[1..8]>]**2$/ }) {
+    my Chess::Position $position .= new;
+    self.new: moves =>
+	my Move @ = @moves
+	    .map: {
+		Move.new: $_, :color($position.turn), :board($position)
+	    }
+}
+
 method pgn {
     join "\n",
     %!tag-pair
