@@ -54,8 +54,8 @@ sub infix:</>(Move $move, ::?CLASS $position) returns Move is export {
 	when king {
 	    if file($move.from) == file(e1) {
 		given file($move.to) {
-		    when file(g1) { return  KingsideCastle.new: $lan }
-		    when file(c1) { return QueensideCastle.new: $lan }
+		    when file(g1) { return  KingsideCastle.new: :color($position.turn) }
+		    when file(c1) { return QueensideCastle.new: :color($position.turn) }
 		}
 	    }
 	}

@@ -40,7 +40,7 @@ method pgn {
 	    sub ($move) {
 		use Chess::Pieces;
 		use Chess::SAN;
-		LEAVE $position.make: $move;
+		LEAVE $position.make: $move / $position;
 		return move-to-SAN $move, $position;
 	    }
 	}()
