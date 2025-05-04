@@ -76,11 +76,11 @@ method best-move(Chess::Position :$position, :@moves, UInt :$movetime = 500 --> 
     start react {
 	whenever $!lines {
 	    if /^<Chess::UCI::best-move>/ {
-		$best-move.keep: my $move = Move.new: ~$<Chess::UCI::best-move>;
+		$best-move.keep: Move.new(~$<Chess::UCI::best-move>) / $position;
 		done;
-	    } elsif /'score mate 0'/ {
-		# this is checkmate so there's no best move
-		$best-move.break;
+	    } elsif /'score mate ' \-?\d+/ {
+		# this is forced checkmate so there's no best move
+		$best-move.break("forced mate");
 		done
 	    }
 	}
