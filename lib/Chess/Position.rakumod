@@ -155,7 +155,9 @@ multi method make(::?CLASS:D: Move::FullyDefined $move) {
 	my $color = .&Chess::Pieces::get-color;
 	when king {
 	    for kingside, queenside -> $right {
-		@undo.push: self.deprive-of-castling-right($right, :$color)
+		if $right ∈ %!castling-rights{$color} {
+		    @undo.push: self.deprive-of-castling-right($right, :$color)
+		}
 	    }
 	}
 	when rook {
