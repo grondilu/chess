@@ -37,7 +37,7 @@ sub coord-to-square($row, $col) {
     return $file ~ $rank;
 }
 
-method SAN {
+sub long-to-standard(*@moves) {
     # Initial chess board
     constant @initial-board = 
 	< r n b q k b n r >,
@@ -52,7 +52,7 @@ method SAN {
     # Convert list of moves from long algebraic to standard algebraic notation.
     my @board[8;8] = (.<> for @initial-board<>);
     my $en-passant-square;
-    gather for @!moves -> $move {
+    gather for @moves -> $move {
 	my ($from-square, $to-square, $promotion);
 	given $move.chars {
 	    when 4 { ($from-square, $to-square, $promotion) = $move.substr(0,2), $move.substr(2,2), Nil; }
@@ -143,7 +143,7 @@ method pgn {
     .map({ qq《[{.key} {.value}] 》}),
     '',
     join ' ',
-    |(self.SAN.rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q[. ])),
+    |(long-to-standard(|@!moves).rotor(2, :partial).map(*.join(' ')) Z[R~] (1..* X~ Q[. ])),
     %(
 	(white-wins) => '1-0',
 	(black-wins) => '0-1',
