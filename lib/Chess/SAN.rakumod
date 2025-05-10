@@ -29,7 +29,8 @@ our sub getDisambiguator(Move $move, Chess::Position $position) {
     } else { return ''; }
 }
 
-sub move-to-SAN(Move $move, Chess::Position $position) returns SAN is export {
+proto move-to-SAN(Move $, Chess::Position $, :$without-annotations) returns SAN is export {*}
+multi move-to-SAN($move, $position, :$without-annotations!) {
     do given $position.moves(:piece($position{$move.from})).first({ .LAN eq $move.LAN }) {
 	fail "could not find move in position \n{$position.fen}\n{$position.ascii}"
 	    unless .defined;
@@ -45,7 +46,11 @@ sub move-to-SAN(Move $move, Chess::Position $position) returns SAN is export {
 	    ($position{$move.to}:exists ?? 'x' !! '') ~
 	    square-enum($move.to);
 	}
-    } ~ do given $position.new($move) {
+    }
+}
+multi move-to-SAN($move, $position) {
+    samewith($move, $position, :without-annotations) ~
+    do given $position.new($move) {
 	when    Check     { '+' }
 	when    Checkmate { '#' }
 	default              {  '' }
