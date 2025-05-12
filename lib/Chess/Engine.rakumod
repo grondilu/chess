@@ -70,9 +70,12 @@ method best-move(Str :$fen, :@moves, UInt :$movetime = 500 --> Promise) {
 	    if /^<Chess::UCI::best-move>/ {
 		$best-move.keep: ~$<Chess::UCI::best-move>;
 		done;
-	    } elsif /'score mate ' \-?\d+/ {
-		# this is forced checkmate so there's no best move
-		$best-move.break("forced mate");
+	    } elsif /'score mate 0'/ {
+		# this is checkmate so there's no best move
+		$best-move.break("checkmate");
+		done
+	    } elsif /^'bestmove (none)'/ {
+		$best-move.break: 'no legal move';
 		done
 	    }
 	}
