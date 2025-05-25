@@ -51,8 +51,8 @@ multi move-to-SAN($move, $position, :$without-annotations!) {
 multi move-to-SAN($move, $position) {
     samewith($move, $position, :without-annotations) ~
     do given $position.new($move) {
-	when    Check     { '+' }
 	when    Checkmate { '#' }
+	when    Check     { '+' }
 	default              {  '' }
     }
 }
