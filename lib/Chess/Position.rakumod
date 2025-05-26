@@ -62,7 +62,7 @@ sub infix:</>(Move $move, ::?CLASS $position) returns Move is export {
 	when pawn {
 	    my PawnMove $pawn-move .= new: $lan;
 	    with $position.en-passant {
-		$pawn-move does EnPassant if $pawn-move.to eq $_;
+		$pawn-move does EnPassant if $pawn-move.to == $_;
 	    }
 	    return $pawn-move;
 	}
