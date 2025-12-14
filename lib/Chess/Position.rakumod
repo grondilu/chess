@@ -47,7 +47,7 @@ has Move $.last-move;
 
 method reset-half-moves-count { $!half-moves-count = 0 }
 
-sub infix:</>(Move $move, ::?CLASS $position) returns Move is export {
+multi infix:</>(Move $move, ::?CLASS $position) returns Move is export {
     use Chess::Board;
     my Str $lan = $move.LAN;
     given $position{$move.from} {
