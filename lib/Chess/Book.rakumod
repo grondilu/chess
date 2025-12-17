@@ -8,10 +8,17 @@ use Chess::PGN;
 has blob8 $.data;
 
 multi method new(IO::Path $path where /'.bin'$/) { self.bless: data => $path.slurp: :bin, :close }
-multi method new(IO::Path $path where /'.pgn'$/) { self.new: $path.slurp: :close }
 
-multi method new(Str $pgn) { self.new: Chess::PGN.parse: $pgn }
-multi method new(Match $/) {
+sub default-filter(Match $/, Chess::Position $ --> UInt) { return 1 }
+multi method new(
+    IO::Path $path where /'.pgn'$/,
+    :&filter:(Match $/, Chess::Position $ --> UInt) = &default-filter
+) { self.new: $path.slurp(:close), :&filter }
+
+multi method new(Str $pgn, :&filter:(Match $/, Chess::Position $ --> UInt) = &default-filter) {
+    samewith Chess::PGN.parse($pgn), :&filter
+}
+multi method new(Match $/, :&filter:(Match $/, Chess::Position $ --> UInt)) {
     self.bless: data => [~]
     gather {
 	gather for $<game> -> $/ {
@@ -21,13 +28,18 @@ multi method new(Match $/) {
 		my Move $move .= new: .Str, :color($position.turn), :board($position);
 		LEAVE $position.make: $move;
 
-		my Int $weight = do given $<game-termination> {
-		    when '1/2-1/2'|'½-½' { 1 }
-		    when '1-0' { $position.turn ~~ white ?? 2 !! 0; }
-		    when '0-1' { $position.turn ~~ black ?? 2 !! 0; }
-		    default { 1 }
+		my Int $weight = &filter($/, $position);
+		#`{{{
+		    do given $<game-termination> {
+			when '1/2-1/2'|'½-½' { 1 }
+			when '1-0' { $position.turn ~~ white ?? 2 !! 0; }
+			when '0-1' { $position.turn ~~ black ?? 2 !! 0; }
+			default { 1 }
+		    }
+		}}}
+		if $weight > 0 {
+		    take $position.uint => %( :move($move.uint), :$weight );
 		}
-		take $position.uint => %( :move($move.uint), :$weight );
 	    }
 	}.classify(*.key, :as(*.value))
 	.map({ .key => .value.classify({.<move>}, :as({.<weight>})).map({ .key => .value.sum }) })
@@ -70,6 +82,7 @@ method AT-KEY(Chess::Position $position) {
 	    default { $right = $middle - 1; }
 	}
     }
+    return without $first-match;
     gather {
 	given sub ($i) {
 		my $entry = $!data.subbuf($i*$entry-size, $entry-size);
