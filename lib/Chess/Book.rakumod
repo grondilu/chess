@@ -13,12 +13,12 @@ sub default-filter(Match $/, Chess::Position $ --> UInt) { return 1 }
 multi method new(
     IO::Path $path where /'.pgn'$/,
     :&filter:(Match $/, Chess::Position $ --> UInt) = &default-filter
-) { self.new: $path.slurp(:close), :&filter }
+) { samewith $path.slurp(:close), :&filter }
 
-multi method new(Str $pgn, :&filter:(Match $/, Chess::Position $ --> UInt) = &default-filter) {
+multi method new(Str $pgn, :&filter!) {
     samewith Chess::PGN.parse($pgn), :&filter
 }
-multi method new(Match $/, :&filter:(Match $/, Chess::Position $ --> UInt)) {
+multi method new(Match $/, :&filter!) {
     self.bless: data => [~]
     gather {
 	gather for $<game> -> $/ {
@@ -37,9 +37,7 @@ multi method new(Match $/, :&filter:(Match $/, Chess::Position $ --> UInt)) {
 			default { 1 }
 		    }
 		}}}
-		if $weight > 0 {
-		    take $position.uint => %( :move($move.uint), :$weight );
-		}
+		take $position.uint => %( :move($move.uint), :$weight );
 	    }
 	}.classify(*.key, :as(*.value))
 	.map({ .key => .value.classify({.<move>}, :as({.<weight>})).map({ .key => .value.sum }) })
