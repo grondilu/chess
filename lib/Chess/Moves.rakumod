@@ -13,6 +13,7 @@ role capture is export {}
 
 role EnPassant {...}
 role Promotion {...}
+role Castle {...}
 class KingsideCastle {...}
 class QueensideCastle {...}
 
@@ -27,6 +28,13 @@ class Move {
     multi method move-pieces(FullyDefined: Chess::Board $board) {
 	my piece $from = $board{$!from}<>;
 	my piece $to = $board{$!to}<>;
+	if $from ~~ king && self !~~ Castle {
+	    if file($!to) > file($!from) + 1 {
+		return KingsideCastle.new(:$!from, :$!to).move-pieces: $board
+	    } elsif file($!from) > file($!to) + 1 {
+		return QueensideCastle.new(:$!from, :$!to).move-pieces: $board
+	    } 
+	}
 	$board{$!to} = $board{$!from}:delete;
 	return -> {
 	    $board{$!to}:delete;
