@@ -79,12 +79,11 @@ class Move {
 	to   => square-enum::{$/[0][1]}
     }
     multi method new(Str $ where /^(<[a..h]><[1..8]>)(<[a..h]><[18]>)(<[qbnr]>)$/) {
+	my ($from, $to) = $/[^2].map: { square-enum::{$_} }
 	my piece $promotion = %(<q b n r> Z=> piece::<♕ ♗ ♘ ♖>){$/[2]};
+	note "promotion is $promotion";
 	$promotion = ¬$promotion if ~$/[1] ~~ /1$/;
-	PawnMove.bless(
-	    from => square-enum::{$/[0]},
-	    to   => square-enum::{$/[1]}
-	) but Promotion[$promotion];
+	PawnMove.bless( :$from, :$to ) but Promotion[$promotion];
     }
     multi method new(
 	Str $ where /^ <Chess::PGN::SAN><[#!]>?<[!?]>** ^2 $/,
