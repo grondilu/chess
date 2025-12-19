@@ -35,6 +35,9 @@ class Move {
 		return QueensideCastle.new(:$!from, :$!to).move-pieces: $board
 	    } 
 	}
+	if self ~~ PawnMove && self ~~ capture && self !~~ EnPassant {
+	    return (self but EnPassant).move-pieces: $board without $board{$!to};
+	}
 	$board{$!to} = $board{$!from}:delete;
 	return -> {
 	    $board{$!to}:delete;
@@ -62,7 +65,7 @@ class Move {
 	    square-enum::{$/[0][0]},
 	    square-enum::{$/[0][1]};
 	if $board{$from} ~~ pawn {
-	    return PawnMove.bless: :$from, :$to
+	    return PawnMove.new: "$from$to"
 	}
 	elsif $board{$from} ~~ ($color ~~ white ?? wk !! bk) {
 	    if file($from) == 4 {
@@ -81,7 +84,6 @@ class Move {
     multi method new(Str $ where /^(<[a..h]><[1..8]>)(<[a..h]><[18]>)(<[qbnr]>)$/) {
 	my ($from, $to) = $/[^2].map: { square-enum::{$_} }
 	my piece $promotion = %(<q b n r> Z=> piece::<♕ ♗ ♘ ♖>){$/[2]};
-	note "promotion is $promotion";
 	$promotion = ¬$promotion if ~$/[1] ~~ /1$/;
 	PawnMove.bless( :$from, :$to ) but Promotion[$promotion];
     }
