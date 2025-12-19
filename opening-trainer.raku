@@ -12,18 +12,36 @@ constant SS = 100;
 sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
 sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
 
+# Start and configure engine
+my Proc::Async $uci-engine .= new: :w, |<ssh aldebaran stockfish>;
+my Int $engine-evaluation = 0;
+my Supplier $engine-best-move .= new;
+$uci-engine.stdout.tap: {
+    when /^info/ { .note }
+    when /'bestmove ' ([<[a..h]><[1..8]>]**2 <[qrbn]>?) / { $engine-best-move.emit: "$/[0]" }
+}
+$uci-engine.stdout.tap: {
+    when /"score cp "(\-?\d+)/ {
+        $engine-evaluation = $/[0].Int;
+    }
+}
+my Promise $engine-termination = $uci-engine.start.then: { note "stockfish has terminated" }
+
 INIT {
     set-trace-log-level LOG_ERROR;
     with %*ENV<DEBUG> { when m:i/true/ { set-trace-log-level LOG_ALL } }
     init-window(8*SS, 8*SS, "raylib chessboard");
     set-target-fps(60);
 }
-END   close-window;
+END await Promise.allof(
+        $uci-engine.say("quit"),
+        $engine-termination
+    ).then({ close-window });
 
 
 package Sounds {
-    INIT init-audio-device;
-    END   close-audio-device;
+    INIT  init-audio-device;
+    END  close-audio-device;
     constant $dir = "resources/sounds";
     our $move    = load-sound "$dir/Move.ogg";
     our $capture = load-sound "$dir/Capture.ogg";
@@ -49,29 +67,17 @@ constant USAGE = q:to/END_USAGE/;
         'f' to flip the board
     END_USAGE
 
-package Stockfish {
-
-    our $process = Proc::Async.new: :w, 'stockfish';
-    END $process.say: "quit";
-    LEAVE $process.start;
-
-    our $evaluation = 0;
-
-    $process.stdout.tap: { when /^info/ { .note } }
-    $process.stdout.tap: {
-        when /"score cp "(\-?\d+)/ {
-            $evaluation = $/[0].Int;
-        }
-    }
-
-}
-
-sub MAIN(*@opening-books where .all ~~ /.[pgn|bin]$/) {
+sub MAIN($master!) {
 
     use Chess::Book;
-    my @books = @opening-books.map: { Chess::Book.new: .IO }
+    my $filename = qq[resources/masters/$master.bin];
+    die "no polyglot book found for master $master" unless $filename.IO ~~ :e;
+
+    my Chess::Book $book .= new: $filename.IO;
 
     my Chess::Position $position .= new;
+
+    $uci-engine.say: "setoption name Threads value 15";
 
     until window-should-close {
 
@@ -91,8 +97,9 @@ sub MAIN(*@opening-books where .all ~~ /.[pgn|bin]$/) {
             $position.make: $move;
             @history.push: $move;
             play-sound $move ~~ Chess::Moves::capture ?? $Sounds::capture !! $Sounds::move;
-            $Stockfish::process.say: "position fen {$position.fen}"
+            $uci-engine.say: "position fen {$position.fen}"
         }
+        once $engine-best-move.Supply.tap: -> $best-move { make-move $best-move }
 
         ENTER {
             begin-drawing;
@@ -145,7 +152,7 @@ sub MAIN(*@opening-books where .all ~~ /.[pgn|bin]$/) {
 
             # draw eval bar
             if $engine-is-running {
-                my $height-delta = SS*$Stockfish::evaluation div 100;
+                my $height-delta = SS*$engine-evaluation div 100;
                 draw-rectangle 8*SS - 10, 0, 10, 4*SS - $height-delta, Color.init(0, 0, 0, 128);
                 draw-rectangle 8*SS - 10, 4*SS - $height-delta + 1, 10, 4*SS + $height-delta, Color.init(255, 255, 255, 128);
             }
@@ -169,43 +176,43 @@ sub MAIN(*@opening-books where .all ~~ /.[pgn|bin]$/) {
             }
         }
         if is-key-pressed KEY_SPACE {
-            $Stockfish::process.say: $engine-is-running ?? "stop" !! "go infinite";
+            $uci-engine.say: $engine-is-running ?? "stop" !! "go infinite";
             $engine-is-running = !$engine-is-running;
         }
 
+
         if $position.turn ~~ white {
             if is-cursor-on-screen {
-                set-mouse-cursor 4;  # pointy hand shape?
                 my ($x, $y) = get-mouse-x, get-mouse-y;
                 my ($f, $r) = $x, $y Xdiv SS;
                 ($f, $r) .= map(7 - *) if $flip-board;
 
                 my $square-name = ("a".."h")[$f] ~ (1..8).reverse[$r];
                 my $square = square-enum::{$square-name};
+                #set-mouse-cursor $position{$square} ?? 4 !! 0;
                 if is-mouse-button-pressed(0) {
                     with $selected-square {
                         with @legal-moves.first: { .to ~~ $square } {
                             make-move $_;
-                            if @books {
-                                my $book = @books.pick;
-                                with $book{$position} {
-                                    my Bag $bag .= new: |.map: { .<move> => .<weight> }
-                                    my $move = $bag.pick.key;
+                            with $book{$position} {
+                                my $move = .map({ .<move> => .<weight> }).Bag.pick;
+                                if $move.defined {
                                     make-move $move;
-                                    #make-move .pick.key given Bag.new: .map: { .<move> => .<weight> };
                                 } else {
-                                    use Chess;
-                                    note "unkown move {@history.pop.LAN}";
-                                    note "known moves are :";
-                                    my $position = startpos;
-                                    $position.make: $_ for @history;
-                                    note $book{$position};
-                                };
-                            }
+                                    note "it seems that $master never faced this position with black";
+                                    note "history is ", @history;
+                                }
+                            } else {
+                                note "unkown move {@history.pop.LAN}";
+                                note "known moves are:";
+                                my Chess::Position $position .= new;
+                                $position.make: $_ for @history;
+                                note $book{$position};
+                            };
                         }
                         $selected-square = Any;
                     } else {
-                        with $position.board[$square] {
+                        with $position{$square} {
                             if Chess::Pieces::get-color($_) ~~ $position.turn {
                                 @legal-moves = $position.moves: :$square;
                                 $selected-square = $square if @legal-moves.elems > 0;
@@ -215,7 +222,10 @@ sub MAIN(*@opening-books where .all ~~ /.[pgn|bin]$/) {
                 } else {
                     # the mouse is just hovering
                     with $selected-square {
+                        # an move origin square has been selected
                         if $square ~~ @legal-moves».to.any {
+                            # the hovered square is a legal move destination square
+                            # so we highlight it
                             ($f, $r) .= map(7 - *) if $flip-board;
                             draw-rectangle SS*$f, SS*$r, SS, SS, Color.init(0, 245, 0, 128);
                         }
@@ -228,8 +238,10 @@ sub MAIN(*@opening-books where .all ~~ /.[pgn|bin]$/) {
                 my ($f, $r) = .&file, .&rank;
                 ($f, $r) .=map: 7 - * if $flip-board;
                 if @legal-moves > 0 {
+                    # mark move destination square with a colored rectangle
                     draw-rectangle $f*SS, $r*SS, SS, SS, Color.init(0, 255, 0, 128);
                     for @legal-moves {
+                        # mark possible move destination squares with a colored disk
                         my ($f, $r) = file(.to), rank(.to);
                         ($f, $r) .= map(7 - *) if $flip-board;
                         draw-circle SS*$f + SS div 2, SS*$r + SS div 2, SS/5e0, Color.init(0, 128, 0, 128);
