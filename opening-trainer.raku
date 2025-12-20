@@ -3,6 +3,7 @@ use Chess::Board;
 use Chess::Colors;
 use Chess::Position;
 use Chess::Pieces;
+use Chess::Moves;
 
 #use Chess::Engine;
 
@@ -82,12 +83,15 @@ sub MAIN($master!) {
         state @legal-moves;
         state @history;
 
+        state Move $last-computed-best-move;
         state Bool $engine-is-running = False;
 
         # Display options
         state Bool $flipped-board = False;
         state Bool $show-coordinates = False;
-        state Bool $highlight-last-move = False;
+        state UInt %highlights =
+            last-move => 0,
+            best-move => 0;
 
         sub find-book-move {
             with $book{$position} {
@@ -98,21 +102,28 @@ sub MAIN($master!) {
             } else { fail "unkown move {@history.tail.LAN}"; }
         }
         sub make-move($move) {
-            use Chess::Moves;
-            use Chess::Game;
             $position.make: $move;
             @history.push: $move;
             play-sound $move ~~ Chess::Moves::capture ?? $Sounds::capture !! $Sounds::move;
-            note "telling the engine to set fen to {$position.fen}";
             if $engine-is-running {
                 $uci-engine.say("stop")
                     .then({ $uci-engine.say: "position fen {$position.fen}" })
                     .then({ $uci-engine.say: "go inifinite" });
             } else { $uci-engine.say: "position fen {$position.fen}" }
         }
+        sub highlight-move(Move $move, $color) {
+            for
+            $move.from => -> $f, $r { draw-rectangle $f*SS, $r*SS, SS, SS, $color; },
+            $move.to   => -> $f, $r { draw-circle $f*SS + (SS div 2), $r*SS + (SS div 2), SS/2e0, $color; }
+            {
+                my ($f, $r) = .key.&file, .key.&rank;
+                ($f, $r) .= map: 7-* if $flipped-board;
+                .value.($f, $r);
+            }
+        }
         once $engine-best-move.Supply.tap: -> $best-move {
             use Chess::Moves;
-            my Move $move .= new: $best-move, :color($position.turn), :board($position);
+            $last-computed-best-move .= new: $best-move, :color($position.turn), :board($position);
             note "best move is $best-move";
         }
 
@@ -146,17 +157,6 @@ sub MAIN($master!) {
                     ;
                 }
             }
-            if $highlight-last-move {
-                if @history.elems {
-                    given @history.tail {
-                        for .from, .to {
-                            my ($f, $r) = .&file, .&rank;
-                            ($f, $r) .= map: 7-* if $flipped-board;
-                            draw-rectangle $f*SS, $r*SS, SS, SS, Color.init(255, 255, 0, 64);
-                        }
-                    }
-                }
-            }
         }
         LEAVE {
             # draw pieces
@@ -180,16 +180,29 @@ sub MAIN($master!) {
             }
 
             clear-background(init-white);
-            draw-fps(10,10);
+            draw-fps(10,10) with %*ENV<DEBUG>;
             end-drawing;
         }
 
+        if %highlights<last-move> > 0 {
+            if @history.elems {
+                given @history.tail {
+                    highlight-move $_, Color.init: 255, 255, 0, %highlights<last-move>--;
+                }
+            }
+        }
+        if %highlights<best-move> > 0 {
+            with $last-computed-best-move {
+                highlight-move $_, Color.init: 0, 255, 0, %highlights<best-move>--;
+            }
+        }
         with chr get-char-pressed {
-            when 'f' { $flipped-board          = !$flipped-board unless $engine-is-running; }
+            when 'f' { $flipped-board       = !$flipped-board unless $engine-is-running; }
             when 'c' { $show-coordinates    = !$show-coordinates    }
-            when 'h' { $highlight-last-move = !$highlight-last-move }
+            when 'h' { %highlights<last-move> = 60 }
             when 'n' { $position .= new; @history = (); $uci-engine.say: "position startpos" }
-            when 'g' { put Chess::Game.new(@history.map: *.LAN).pgn; }
+            when 'g' { use Chess::Game; put Chess::Game.new(@history.map: *.LAN).pgn; }
+            when 'b' { %highlights<best-move> = 120 }
             when 'u' {
                 if @history {
                     @history.pop();
@@ -260,7 +273,7 @@ sub MAIN($master!) {
             when BOOK {
                 try {
                     my $move = find-book-move;
-                    note "found move $move";
+                    note "found move {$move.LAN}";
                     make-move $move;
                 }
             }
