@@ -9,6 +9,8 @@ use Chess::Pieces;
 # square size
 constant SS = 100;
 
+my &sigmoid = 8*(* - 1/2) o {$_/(1+$_)} o &exp o (.51082569 * *);
+
 sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
 sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
 
@@ -60,12 +62,7 @@ package Textures {
     END for <k q b n r p> { unload-texture %pieces{$_} for .lc, .uc; }
 }
 
-constant USAGE = q:to/END_USAGE/;
-    - press :
-        'h' to highlight last move
-        'c' to display column and file names
-        'f' to flip the board
-    END_USAGE
+enum MoveDiscoveryMethod <USER BOOK ENGINE>;
 
 sub MAIN($master!) {
 
@@ -88,18 +85,43 @@ sub MAIN($master!) {
         state Bool $engine-is-running = False;
 
         # Display options
-        state Bool $flip-board = False;
+        state Bool $flipped-board = False;
         state Bool $show-coordinates = False;
         state Bool $highlight-last-move = False;
 
+        sub find-book-move {
+            with $book{$position} {
+                my $move = .map({ .<move> => .<weight> }).Bag.pick;
+                if $move.defined {
+                    return $move;
+                } else { fail "$master never faced this position with {$position.turn}"; }
+            } else { fail "unkown move {@history.tail.LAN}"; }
+        }
         sub make-move($move) {
             use Chess::Moves;
+            use Chess::Game;
             $position.make: $move;
             @history.push: $move;
             play-sound $move ~~ Chess::Moves::capture ?? $Sounds::capture !! $Sounds::move;
-            $uci-engine.say: "position fen {$position.fen}"
+            note "telling the engine to set fen to {$position.fen}";
+            if $engine-is-running {
+                $uci-engine.say("stop")
+                    .then({ $uci-engine.say: "position fen {$position.fen}" })
+                    .then({ $uci-engine.say: "go inifinite" });
+            } else { $uci-engine.say: "position fen {$position.fen}" }
         }
-        once $engine-best-move.Supply.tap: -> $best-move { make-move $best-move }
+        once $engine-best-move.Supply.tap: -> $best-move {
+            use Chess::Moves;
+            my Move $move .= new: $best-move, :color($position.turn), :board($position);
+            note "best move is $best-move";
+        }
+
+        my MoveDiscoveryMethod $move-discovery-method = do
+            given $position.turn {
+                when white { $flipped-board ?? BOOK !! USER }
+                when black { $flipped-board ?? USER !! BOOK }
+                default { USER }
+            }
 
         ENTER {
             begin-drawing;
@@ -110,13 +132,13 @@ sub MAIN($master!) {
             if $show-coordinates {
                 for ^8 {
                     draw-text
-                    { $flip-board ?? .reverse !! $_ }("a".."h")[$_],
+                    { $flipped-board ?? .reverse !! $_ }("a".."h")[$_],
                     SS*$_ + SS div 20,
                     7*SS + (SS * 3 div 4),
                     SS div 5,
                     (($_ mod 2) ?? init-dark() !! init-light);
                     draw-text
-                    { $flip-board ?? 9 - $_ !! $_ }(8 - $_).Str,
+                    { $flipped-board ?? 9 - $_ !! $_ }(8 - $_).Str,
                     7*SS + (SS * 5 div 6),
                     SS*$_ + SS div 20,
                     SS div 5,
@@ -129,7 +151,7 @@ sub MAIN($master!) {
                     given @history.tail {
                         for .from, .to {
                             my ($f, $r) = .&file, .&rank;
-                            ($f, $r) .= map: 7-* if $flip-board;
+                            ($f, $r) .= map: 7-* if $flipped-board;
                             draw-rectangle $f*SS, $r*SS, SS, SS, Color.init(255, 255, 0, 64);
                         }
                     }
@@ -141,7 +163,7 @@ sub MAIN($master!) {
             for @Chess::Board::squares -> $s {
                 my $x = file($s) * SS;
                 my $y = rank($s) * SS;
-                if $flip-board {
+                if $flipped-board {
                     $x = 7*SS - $x;
                     $y = 7*SS - $y;
                 }
@@ -152,7 +174,7 @@ sub MAIN($master!) {
 
             # draw eval bar
             if $engine-is-running {
-                my $height-delta = SS*$engine-evaluation div 100;
+                my $height-delta = round(SS*($position.turn ~~ black ?? -1 !! +1)*&sigmoid($engine-evaluation / 100));
                 draw-rectangle 8*SS - 10, 0, 10, 4*SS - $height-delta, Color.init(0, 0, 0, 128);
                 draw-rectangle 8*SS - 10, 4*SS - $height-delta + 1, 10, 4*SS + $height-delta, Color.init(255, 255, 255, 128);
             }
@@ -163,10 +185,11 @@ sub MAIN($master!) {
         }
 
         with chr get-char-pressed {
-            when 'f' { $flip-board          = !$flip-board          }
+            when 'f' { $flipped-board          = !$flipped-board unless $engine-is-running; }
             when 'c' { $show-coordinates    = !$show-coordinates    }
             when 'h' { $highlight-last-move = !$highlight-last-move }
-            when 'n' { $position .= new; @history = ()              }
+            when 'n' { $position .= new; @history = (); $uci-engine.say: "position startpos" }
+            when 'g' { put Chess::Game.new(@history.map: *.LAN).pgn; }
             when 'u' {
                 if @history {
                     @history.pop();
@@ -180,80 +203,71 @@ sub MAIN($master!) {
             $engine-is-running = !$engine-is-running;
         }
 
+        given $move-discovery-method {
+            when USER {
+                if is-cursor-on-screen {
+                    my ($x, $y) = get-mouse-x, get-mouse-y;
+                    my ($f, $r) = $x, $y Xdiv SS;
+                    ($f, $r) .= map(7 - *) if $flipped-board;
 
-        if $position.turn ~~ white {
-            if is-cursor-on-screen {
-                my ($x, $y) = get-mouse-x, get-mouse-y;
-                my ($f, $r) = $x, $y Xdiv SS;
-                ($f, $r) .= map(7 - *) if $flip-board;
-
-                my $square-name = ("a".."h")[$f] ~ (1..8).reverse[$r];
-                my $square = square-enum::{$square-name};
-                #set-mouse-cursor $position{$square} ?? 4 !! 0;
-                if is-mouse-button-pressed(0) {
-                    with $selected-square {
-                        with @legal-moves.first: { .to ~~ $square } {
-                            make-move $_;
-                            with $book{$position} {
-                                my $move = .map({ .<move> => .<weight> }).Bag.pick;
-                                if $move.defined {
-                                    make-move $move;
-                                } else {
-                                    note "it seems that $master never faced this position with black";
-                                    note "history is ", @history;
+                    my $square-name = ("a".."h")[$f] ~ (1..8).reverse[$r];
+                    my $square = square-enum::{$square-name};
+                    #set-mouse-cursor $position{$square} ?? 4 !! 0;
+                    if is-mouse-button-pressed(0) {
+                        with $selected-square {
+                            with @legal-moves.first: { .to ~~ $square } {
+                                make-move $_;
+                            }
+                            $selected-square = Any;
+                        } else {
+                            with $position{$square} {
+                                if Chess::Pieces::get-color($_) ~~ $position.turn {
+                                    @legal-moves = $position.moves: :$square;
+                                    $selected-square = $square if @legal-moves.elems > 0;
                                 }
-                            } else {
-                                note "unkown move {@history.pop.LAN}";
-                                note "known moves are:";
-                                my Chess::Position $position .= new;
-                                $position.make: $_ for @history;
-                                note $book{$position};
-                            };
-                        }
-                        $selected-square = Any;
-                    } else {
-                        with $position{$square} {
-                            if Chess::Pieces::get-color($_) ~~ $position.turn {
-                                @legal-moves = $position.moves: :$square;
-                                $selected-square = $square if @legal-moves.elems > 0;
                             }
                         }
+                    } else {
+                        # the mouse is just hovering
+                        with $selected-square {
+                            # an move origin square has been selected
+                            if $square ~~ @legal-moves».to.any {
+                                # the hovered square is a legal move destination square
+                                # so we highlight it
+                                ($f, $r) .= map(7 - *) if $flipped-board;
+                                draw-rectangle SS*$f, SS*$r, SS, SS, Color.init(0, 245, 0, 128);
+                            }
+                        }
+
                     }
-                } else {
-                    # the mouse is just hovering
-                    with $selected-square {
-                        # an move origin square has been selected
-                        if $square ~~ @legal-moves».to.any {
-                            # the hovered square is a legal move destination square
-                            # so we highlight it
-                            ($f, $r) .= map(7 - *) if $flip-board;
-                            draw-rectangle SS*$f, SS*$r, SS, SS, Color.init(0, 245, 0, 128);
+                }
+
+                with $selected-square {
+                    my ($f, $r) = .&file, .&rank;
+                    ($f, $r) .=map: 7 - * if $flipped-board;
+                    if @legal-moves > 0 {
+                        # mark move destination square with a colored rectangle
+                        draw-rectangle $f*SS, $r*SS, SS, SS, Color.init(0, 255, 0, 128);
+                        for @legal-moves {
+                            # mark possible move destination squares with a colored disk
+                            my ($f, $r) = file(.to), rank(.to);
+                            ($f, $r) .= map(7 - *) if $flipped-board;
+                            draw-circle SS*$f + SS div 2, SS*$r + SS div 2, SS/5e0, Color.init(0, 128, 0, 128);
                         }
                     }
-
                 }
             }
-
-            with $selected-square {
-                my ($f, $r) = .&file, .&rank;
-                ($f, $r) .=map: 7 - * if $flip-board;
-                if @legal-moves > 0 {
-                    # mark move destination square with a colored rectangle
-                    draw-rectangle $f*SS, $r*SS, SS, SS, Color.init(0, 255, 0, 128);
-                    for @legal-moves {
-                        # mark possible move destination squares with a colored disk
-                        my ($f, $r) = file(.to), rank(.to);
-                        ($f, $r) .= map(7 - *) if $flip-board;
-                        draw-circle SS*$f + SS div 2, SS*$r + SS div 2, SS/5e0, Color.init(0, 128, 0, 128);
-                    }
+            when BOOK {
+                try {
+                    my $move = find-book-move;
+                    note "found move $move";
+                    make-move $move;
                 }
             }
         }
-        
-
     }
 
 }
 
 
-# vim: shiftwidth=4 nowrap expandtab
+# vim: shiftwidth=4 nowrap expandtab nu
