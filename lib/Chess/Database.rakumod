@@ -138,5 +138,5 @@ submethod TWEAK {
 }
 
 CHECK {
-	my ::?CLASS $db .= new: filename => ':memory';
+	my ::?CLASS $db .= new;
 }
