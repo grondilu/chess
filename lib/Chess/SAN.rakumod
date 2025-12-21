@@ -31,8 +31,12 @@ our sub getDisambiguator(Move $move, Chess::Position $position) {
 
 proto move-to-SAN(Move $, Chess::Position $, :$without-annotations) returns SAN is export {*}
 multi move-to-SAN($move, $position, :$without-annotations!) {
-    do given $position.moves(:piece($position{$move.from})).first({ .LAN eq $move.LAN }) {
-	fail "could not find move in position \n{$position.fen}\n{$position.ascii}"
+    my $from = $move.from;
+    fail "no piece on square {$from}" without $position{$from};
+    my @moves = $position.moves(:piece($position{$from}));
+    fail "could not find moves in position {$position.fen}" if @moves == 0;
+    do given @moves.first({ .LAN eq $move.LAN }) {
+	fail "could not find move `{$move.LAN}` in position \n{$position.fen}\n{$position.ascii}"
 	    unless .defined;
 	when PawnMove|Castle {
 	    .pseudo-SAN;
