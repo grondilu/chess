@@ -1,6 +1,16 @@
 use DB::SQLite;
 unit class Chess::Database is DB::SQLite;
 
+enum Master <
+		Abdusattorov Adams Akobian Alekhine Anand Bacrot Bird Blackburne
+		Bogoljubow Botvinnik Bronstein Capablanca Carlsen Caruana Chigorin
+		Evans Finegold Firouzja Fischer Giri Ivanchuk Karjakin Karpov Kasparov
+		Korchnoi Kramnik Lasker Maroczy Marshall Mikenas Morozevich Morphy
+		Najdorf Nakamura Navara Nepomniachtchi Nimzowitsch Nunn Petrosian
+		Philidor Rapport Reti Rubinstein Saemisch Seirawan Shirov Short Smyslov
+		Sokolov So Spassky Spielmann Steinitz Svidler Tal Tarrasch Tartakower
+		Tomashevsky Topalov VachierLagrave VallejoPons Winawer
+>;
 constant %name-disambiguation = 
 	Adams          => rx/ Adams\,\s?Mi /,
 	Carlsen        => rx/ Carlsen\,\s?M[agnus]? /,
@@ -14,14 +24,16 @@ constant %name-disambiguation =
 	VallejoPons    => rx/ "Vallejo Pons" /
 ;
 
+sub get-resource(Str $resource --> IO::Handle) {
+	.open given %?RESOURCES{$resource} // "resources/$resource".IO
+}
 submethod TWEAK {
-
-	my %PGN;
 
 	self.execute: q:to/END_SQL/;
 	CREATE TABLE IF NOT EXISTS pgn_sources (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		sha1_sum TEXT NOT NULL UNIQUE,
+		master   TEXT,
 		filename TEXT
 	);
 	END_SQL
@@ -45,7 +57,7 @@ submethod TWEAK {
         END_SQL
 
 	my $pgn_sources_insert = self.db.prepare: q:to/END_SQL/;
-	INSERT OR IGNORE INTO pgn_sources (sha1_sum, filename) VALUES (?, ?);
+	INSERT OR IGNORE INTO pgn_sources (sha1_sum, master, filename) VALUES (?, ?, ?);
 	END_SQL
 	for <
 		Abdusattorov Adams Akobian Alekhine Anand Bacrot Bird Blackburne
@@ -58,24 +70,24 @@ submethod TWEAK {
 		Tomashevsky Topalov VachierLagrave VallejoPons Winawer
 	> -> $master {
 		use Digest::SHA1::Native;
-		my $pgn = (%?RESOURCES{"masters/$master.pgn"} // qq{resources/masters/$master.pgn}.IO).slurp(:bin);
+		my $pgn = get-resource("masters/$master.pgn").slurp(:bin, :close);
 		my $sha1 = sha1-hex $pgn;
-		%PGN{$sha1} = $pgn.decode;
-		$pgn_sources_insert.execute: $sha1, "$master.pgn";
+		$pgn_sources_insert.execute: $sha1, $master, "masters/$master.pgn";
 	}
 	$pgn_sources_insert.finish;
 
 	class Parser is Channel {
 		use Chess::Position;
 		use Chess::Colors;
-		has Str $.filename;
+		has Master $.master;
+		has Str    $.filename;
 		has color $!master-color;
 		has Chess::Position $!position .= new;
 
 		method tag-pair($/) {
-			my $master = $!filename.subst: /'.pgn'/, '';
-			if $<name> eq 'White'|'Black' && $<value> ~~ (%name-disambiguation{$master} // /$master/) {
-				unless $master & $<value> ~~ /Karpov/ {
+			my $master = $!master;
+			if $<name> eq 'White'|'Black' && $<value> ~~ (%name-disambiguation{$!master} // /$master/) {
+				unless $!master & $<value> ~~ /Karpov/ {
 					die "ambiguous name" if $!master-color.defined;
 				}
 				$!master-color = $<name> eq 'White' ?? white !! black;
@@ -100,7 +112,7 @@ submethod TWEAK {
 		}
 		method TOP($/) { self.close }
 	}
-        my @sources = self.query(q{select filename, sha1_sum, id from pgn_sources}).arrays;
+        my @sources = self.query(q{select master, filename, sha1_sum, id from pgn_sources}).arrays;
 
 
 	my $game-insert = self.db.prepare: q:to/END_SQL/;
@@ -109,28 +121,29 @@ submethod TWEAK {
 	END_SQL
 	for @sources {
                 self.db.begin;
+		LEAVE self.db.commit;
 
 		use Chess::PGN;
 
-		my ($filename, $sha1_sum, $id) = .list;
+		my ($master, $filename, $sha1_sum, $id) = .list;
+		my $pgn = get-resource($filename).slurp(:close);
 
-		my Parser $parser .= new: :$filename;
-		my $parsing = start Chess::PGN.parse: %PGN{$sha1_sum}, actions => $parser;
+		my Parser $parser .= new: :master(Master::{$master}), :$filename;
+		my $parsing = start Chess::PGN.parse: $pgn, actions => $parser;
+		LEAVE await $parsing;
 
 		for $parser.list {
-			print "\e7\e[0J";
-			put "source_id $id";
-			put "start_offset {.from}";
-			put "end_offset {.to}";
-			put .made<tags><Event Site Date Round White Black Result>.map({qq{"$_"}});
-			put .made<moves>;
-			print "\e8";
+			once print "source_id $id\e[0K\n\e7";
+			LEAVE print "\e8";
                         my @args = $id, .from, .to, |.made<tags><Event Site Date Round White Black Result>, .made<moves>;
                         $game-insert.execute: @args;
+			put "$_\e[0K" for 
+			"start_offset {.from}\e[0K",
+			"end_offset {.to}\e[0K",
+			.made<tags><Event Site Date Round White Black Result>.map({qq{"$_"}}) ~ "\e[0K",
+			.made<moves> ~ "\e[0K",
+			"\e[0J";
 		}
-
-                await $parsing;
-                self.db.commit;
 
 	}
         $game-insert.finish;
