@@ -6,7 +6,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.32.7",
+    "version" : "0.32.9",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
@@ -15,7 +15,9 @@
 	    "URI::Encode",
 	    "Terminal::Size",
 	    "Terminal::ANSI",
-	    "Terminal::LineEditor"
+	    "Terminal::LineEditor",
+	    "DB::SQLite",
+	    "Digest::SHA1::Native"
     ],
     "provides" : {
         "Chess"                   : "lib/Chess.rakumod",
@@ -35,8 +37,8 @@
 	"Chess::Board"            : "lib/Chess/Board.rakumod",
 	"Chess::Pieces"           : "lib/Chess/Pieces.rakumod",
 	"Chess::Graphics"         : "lib/Chess/Graphics.rakumod",
-	"Kitty"                   : "lib/Kitty.rakumod",
-	"CSI"                     : "lib/CSI.rakumod"
+	"Chess::Database"         : "lib/Chess/Database.rakumod",
+	"Kitty"                   : "lib/Kitty.rakumod"
     },
     "resources" : [
 	    "images/checkerboard.svg",

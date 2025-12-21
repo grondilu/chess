@@ -2,6 +2,7 @@
 .precomp/
 lib/.precomp/
 t/.precomp/
+resources/masters/*.bin
 resources/images/piece/alpha
 resources/images/piece/anarcandy
 resources/images/piece/caliente
