@@ -1,6 +1,12 @@
 use DB::SQLite;
 unit class Chess::Database is DB::SQLite;
 
+CHECK {
+	my ::?CLASS $db .= new;
+
+	$db.create-tables;
+	$db.populate-tables;
+}
 enum Master <
 		Abdusattorov Adams Akobian Alekhine Anand Bacrot Bird Blackburne
 		Bogoljubow Botvinnik Bronstein Capablanca Carlsen Caruana Chigorin
@@ -24,12 +30,50 @@ constant %name-disambiguation =
 	VallejoPons    => rx/ "Vallejo Pons" /
 ;
 
+class Parser is Channel {
+	use Chess::Position;
+	use Chess::Colors;
+	has Master $.master;
+	has Str    $.filename;
+	has color $!master-color;
+	has Chess::Position $!position .= new;
+
+	method tag-pair($/) {
+		my $master = $!master;
+		if $<name> eq 'White'|'Black' && $<value> ~~ (%name-disambiguation{$!master} // /$master/) {
+			unless $!master & $<value> ~~ /Karpov/ {
+				die "ambiguous name" if $!master-color.defined;
+			}
+			$!master-color = $<name> eq 'White' ?? white !! black;
+		}
+		make ~$<name> => $<value>.Str.subst: /[^\"]|[\"$]/, '', :g;
+	}
+	method tag-pair-section($/) { make %( $<tag-pair>».made.grep: { .value ne '' } ) }
+	method game-termination($/) { $!position .= new; $!master-color = color; }
+	method game($/) {
+		$/.make: %(
+			tags => $<tag-pair-section>.made,
+			moves => $<movetext-section>.Str.lines.join(' '),
+		);
+		self.send: $/;
+	}
+	method move($/) { make $<SAN>.made }
+	method SAN($/) {
+		use Chess::Moves;
+		my Move $move .=new: $/.Str, :color($!position.turn), :board($!position);
+		LEAVE $!position.make: $move;
+		make %( :$move, :$!position, :$!master-color );
+	}
+	method TOP($/) { self.close }
+}
 sub get-resource(Str $resource --> IO::Handle) {
 	.open given %?RESOURCES{$resource} // "resources/$resource".IO
 }
-submethod TWEAK {
 
-	self.execute: q:to/END_SQL/;
+method create-tables {
+
+	self.execute: $_ for
+	q:to/END_SQL/,
 	CREATE TABLE IF NOT EXISTS pgn_sources (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		sha1_sum TEXT NOT NULL UNIQUE,
@@ -37,8 +81,7 @@ submethod TWEAK {
 		filename TEXT
 	);
 	END_SQL
-
-        self.execute: q:to/END_SQL/;
+        q:to/END_SQL/,
         CREATE TABLE IF NOT EXISTS games (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_id INTEGER NOT NULL,
@@ -55,6 +98,11 @@ submethod TWEAK {
                 FOREIGN KEY(source_id) REFERENCES pgn_sources(id) ON DELETE CASCADE
         );
         END_SQL
+	;
+
+}
+
+method populate-tables {
 
 	my $pgn_sources_insert = self.db.prepare: q:to/END_SQL/;
 	INSERT OR IGNORE INTO pgn_sources (sha1_sum, master, filename) VALUES (?, ?, ?);
@@ -76,45 +124,8 @@ submethod TWEAK {
 	}
 	$pgn_sources_insert.finish;
 
-	class Parser is Channel {
-		use Chess::Position;
-		use Chess::Colors;
-		has Master $.master;
-		has Str    $.filename;
-		has color $!master-color;
-		has Chess::Position $!position .= new;
 
-		method tag-pair($/) {
-			my $master = $!master;
-			if $<name> eq 'White'|'Black' && $<value> ~~ (%name-disambiguation{$!master} // /$master/) {
-				unless $!master & $<value> ~~ /Karpov/ {
-					die "ambiguous name" if $!master-color.defined;
-				}
-				$!master-color = $<name> eq 'White' ?? white !! black;
-			}
-			make ~$<name> => $<value>.Str.subst: /[^\"]|[\"$]/, '', :g;
-		}
-		method tag-pair-section($/) { make %( $<tag-pair>».made.grep: { .value ne '' } ) }
-		method game-termination($/) { $!position .= new; $!master-color = color; }
-		method game($/) {
-			$/.make: %(
-				tags => $<tag-pair-section>.made,
-				moves => $<movetext-section>.Str.lines.join(' '),
-			);
-			self.send: $/;
-		}
-		method move($/) { make $<SAN>.made }
-		method SAN($/) {
-			use Chess::Moves;
-			my Move $move .=new: $/.Str, :color($!position.turn), :board($!position);
-			LEAVE $!position.make: $move;
-			make %( :$move, :$!position, :$!master-color );
-		}
-		method TOP($/) { self.close }
-	}
         my @sources = self.query(q{select master, filename, sha1_sum, id from pgn_sources}).arrays;
-
-
 	my $game-insert = self.db.prepare: q:to/END_SQL/;
 	INSERT OR IGNORE INTO games (source_id, start_offset, end_offset, event, site, date, round, white, black, result, moves)
                              VALUES (        ?,            ?,          ?,     ?,    ?,    ?,     ?,     ?,     ?,      ?,     ?);
@@ -148,8 +159,4 @@ submethod TWEAK {
 	}
         $game-insert.finish;
 
-}
-
-CHECK {
-	my ::?CLASS $db .= new;
 }
