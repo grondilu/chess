@@ -5,8 +5,6 @@ use Chess::Position;
 use Chess::Pieces;
 use Chess::Moves;
 
-#use Chess::Engine;
-
 # square size
 constant SS = 100;
 
@@ -48,24 +46,27 @@ package Sounds {
     constant $dir = "resources/sounds";
     our $move    = load-sound "$dir/Move.ogg";
     our $capture = load-sound "$dir/Capture.ogg";
-    END unload-sound $_ for $move, $capture;
+    our $correct = load-sound "$dir/correct-156911.mp3";
+    our $wrong   = load-sound "$dir/wronganswer-37702.mp3";
+    END unload-sound $_ for $move, $capture, $correct, $wrong;
 }
 
 package Textures {
     our %pieces;
-    for <k q b n r p> {
+    constant @symbols = <k q b n r p>;
+    for @symbols {
         for .lc, .uc {
             my $image = load-image("resources/images/piece/cburnett/$_.png");
             %pieces{$_} = load-texture-from-image $image;
             unload-image $image;
         }
     }
-    END for <k q b n r p> { unload-texture %pieces{$_} for .lc, .uc; }
+    END for @symbols { unload-texture %pieces{$_} for .lc, .uc; }
 }
 
 enum MoveDiscoveryMethod <USER BOOK ENGINE>;
 
-sub MAIN {
+sub MAIN(*@masters) {
 
     use Chess::Book;
     use Chess::Database;
@@ -91,7 +92,10 @@ sub MAIN {
         state @history;
         state @undo;
 
-        state Move $last-computed-best-move;
+        state Move (
+            $last-computed-best-move,
+            $book-move
+        );
         state Bool $engine-is-running = False;
 
         # Display options
@@ -99,20 +103,45 @@ sub MAIN {
         state Bool $show-coordinates = False;
         state UInt %highlights =
             last-move => 0,
-            best-move => 0;
+            best-move => 0,
+            book-move => 0;
 
-        sub find-book-move {
-            for %books {
-                my $master = .key;
-                note "searching $master.bin";
-                with .value{$position} {
-                    my $move = .map({ .<move> => .<weight> }).Bag.pick;
-                    if $move.defined {
-                        return %( :$master, :$move );
-                    } else { note "$master never faced this position with {$position.turn}"; }
+        sub find-book-move(Bool :$from-masters = True) {
+            if $from-masters {
+                for %books {
+                    my $master = .key;
+                    next if @masters and $master eq @masters.none;
+                    #note "searching $master.bin";
+                    with .value{$position} {
+                        my $move = .map({ .<move> => .<weight> }).Bag.pick;
+                        if $move.defined {
+                            note "found {$move.LAN} from $master";
+                            return %( :$master, :$move );
+                        } else { note "$master never faced this position with {$position.turn}"; }
+                    }
+                }
+            } else {
+                for %books {
+                    with .value{$position} {
+                        return %( :move(.map({ .<move> }).pick) )
+                    }
                 }
             }
-            fail "unkown move";
+            play-sound $Sounds::wrong;
+            fail "unknown move";
+        }
+        sub find-and-highlight-move(Bool :$from-masters = False) {
+            try {
+                my %find = find-book-move :!from-masters;
+                %highlights<book-move> = 60;
+                $book-move = %find<move>;
+                CATCH {
+                    when X::AdHoc {
+                        .note;
+                        note "no move found in books";
+                    }
+                }
+            }
         }
         sub make-move($move) {
             @undo.push: $position.make: $move;
@@ -137,7 +166,8 @@ sub MAIN {
             }
         }
         sub reset {
-            .() while @undo.push;
+            @undo = ();
+            @history = ();
             if $engine-is-running {
                 await $uci-engine.say: "stop";
                 $engine-is-running = False;
@@ -233,14 +263,19 @@ sub MAIN {
                 highlight-move $_, Color.init: 0, 255, 0, %highlights<best-move>--;
             }
         }
+        if %highlights<book-move> > 0 {
+            with $book-move {
+                highlight-move $_, Color.init: 0, 0, 255, %highlights<book-move>--;
+            }
+        }
         with chr get-char-pressed {
             when 'f' { $flipped-board       = !$flipped-board unless $engine-is-running; }
             when 'c' { $show-coordinates    = !$show-coordinates    }
             when 'h' { %highlights<last-move> = 60 }
-            when 'n' { reset }
+            when 'r' { reset }
             when 'g' { use Chess::Game; put Chess::Game.new(@history.map: *.LAN).pgn; }
-            when 'b' { %highlights<best-move> = 120 }
-            when 'u' { undo }
+            when 'b' { find-and-highlight-move :!from-masters }
+            when 'u' { undo; undo }
         }
         if is-key-pressed KEY_SPACE {
             $uci-engine.say: $engine-is-running ?? "stop" !! "go infinite";
@@ -256,8 +291,9 @@ sub MAIN {
 
                     my $square-name = ("a".."h")[$f] ~ (1..8).reverse[$r];
                     my $square = square-enum::{$square-name};
-                    #set-mouse-cursor $position{$square} ?? 4 !! 0;
-                    if is-mouse-button-pressed(0) {
+                    set-mouse-cursor $position{$square} ?? MOUSE_CURSOR_POINTING_HAND !! MOUSE_CURSOR_DEFAULT;
+
+                    if is-mouse-button-pressed(MOUSE_BUTTON_LEFT) {
                         with $selected-square {
                             with @legal-moves.first: { .to ~~ $square } {
                                 make-move $_;
@@ -308,9 +344,11 @@ sub MAIN {
                     make-move %find<move>;
                     note "found move {%find<move>.LAN} from %find<master>";
                     CATCH {
-                        default {
-                            note "no book move found for last move, reverting";
+                        when X::AdHoc {
+                            .note;
+                            note "reverting";
                             undo;
+                            find-and-highlight-move :!from-masters;
                         }
                     }
                 }
