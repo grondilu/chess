@@ -43,7 +43,6 @@ has color $.turn;
 has Set[castling-right] %.castling-rights{color};
 has en-passant-square $.en-passant is rw;
 has UInt ($.half-moves-count, $.move-number);
-has Move $.last-move;
 
 method reset-half-moves-count { $!half-moves-count = 0 }
 
