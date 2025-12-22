@@ -10,7 +10,7 @@ use Chess::Moves;
 # square size
 constant SS = 100;
 
-my &sigmoid = 8*(* - 1/2) o {$_/(1+$_)} o &exp o (.51082569 * *);
+my &sigmoid = 8*(* - 1/2) ∘ {$_/(1+$_)} ∘ &exp ∘ (.51082569 * *); # ∘
 
 sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
 sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
@@ -65,23 +65,31 @@ package Textures {
 
 enum MoveDiscoveryMethod <USER BOOK ENGINE>;
 
-sub MAIN($master!) {
+sub MAIN {
 
     use Chess::Book;
-    my $filename = qq[resources/masters/$master.bin];
-    die "no polyglot book found for master $master" unless $filename.IO ~~ :e;
+    use Chess::Database;
+    my %books;
+    for Chess::Database::Master::{*} -> $master {
+        my $filename = qq[resources/masters/$master.bin];
+        die "no polyglot book found for master $master" unless $filename.IO ~~ :e;
 
-    my Chess::Book $book .= new: $filename.IO;
+        %books{$master} = 
+            my Chess::Book $book .= new: $filename.IO;
+    }
 
     my Chess::Position $position .= new;
 
-    $uci-engine.say: "setoption name Threads value 15";
+    await $uci-engine.say: "setoption name Threads value 15";
 
     until window-should-close {
+        ENTER begin-drawing;
+        LEAVE end-drawing;
 
         state $selected-square;
         state @legal-moves;
         state @history;
+        state @undo;
 
         state Move $last-computed-best-move;
         state Bool $engine-is-running = False;
@@ -94,15 +102,20 @@ sub MAIN($master!) {
             best-move => 0;
 
         sub find-book-move {
-            with $book{$position} {
-                my $move = .map({ .<move> => .<weight> }).Bag.pick;
-                if $move.defined {
-                    return $move;
-                } else { fail "$master never faced this position with {$position.turn}"; }
-            } else { fail "unkown move {@history.tail.LAN}"; }
+            for %books {
+                my $master = .key;
+                note "searching $master.bin";
+                with .value{$position} {
+                    my $move = .map({ .<move> => .<weight> }).Bag.pick;
+                    if $move.defined {
+                        return %( :$master, :$move );
+                    } else { note "$master never faced this position with {$position.turn}"; }
+                }
+            }
+            fail "unkown move";
         }
         sub make-move($move) {
-            $position.make: $move;
+            @undo.push: $position.make: $move;
             @history.push: $move;
             play-sound $move ~~ Chess::Moves::capture ?? $Sounds::capture !! $Sounds::move;
             if $engine-is-running {
@@ -111,6 +124,30 @@ sub MAIN($master!) {
                     .then({ $uci-engine.say: "go inifinite" });
             } else { $uci-engine.say: "position fen {$position.fen}" }
         }
+        sub undo {
+            if @history {
+                @undo.pop.();
+                @history.pop();
+                if $engine-is-running {
+                    await $uci-engine.say: "stop";
+                    $engine-is-running = False;
+                }
+                $uci-engine.say: "position fen {$position.fen}";
+                note "move undone";
+            }
+        }
+        sub reset {
+            .() while @undo.push;
+            if $engine-is-running {
+                await $uci-engine.say: "stop";
+                $engine-is-running = False;
+            }
+            %highlights{$_} = 0 for %highlights.keys;
+            $selected-square = Any;
+            $position .= new;
+            $uci-engine.say: "position startpos";
+        }
+
         sub highlight-move(Move $move, $color) {
             for
             $move.from => -> $f, $r { draw-rectangle $f*SS, $r*SS, SS, SS, $color; },
@@ -125,6 +162,7 @@ sub MAIN($master!) {
             use Chess::Moves;
             $last-computed-best-move .= new: $best-move, :color($position.turn), :board($position);
             note "best move is $best-move";
+            %highlights<best-move> = 120;
         }
 
         my MoveDiscoveryMethod $move-discovery-method = do
@@ -181,7 +219,6 @@ sub MAIN($master!) {
 
             clear-background(init-white);
             draw-fps(10,10) with %*ENV<DEBUG>;
-            end-drawing;
         }
 
         if %highlights<last-move> > 0 {
@@ -200,16 +237,10 @@ sub MAIN($master!) {
             when 'f' { $flipped-board       = !$flipped-board unless $engine-is-running; }
             when 'c' { $show-coordinates    = !$show-coordinates    }
             when 'h' { %highlights<last-move> = 60 }
-            when 'n' { $position .= new; @history = (); $uci-engine.say: "position startpos" }
+            when 'n' { reset }
             when 'g' { use Chess::Game; put Chess::Game.new(@history.map: *.LAN).pgn; }
             when 'b' { %highlights<best-move> = 120 }
-            when 'u' {
-                if @history {
-                    @history.pop();
-                    $position.=new;
-                    $position.make: $_ for @history;
-                }
-            }
+            when 'u' { undo }
         }
         if is-key-pressed KEY_SPACE {
             $uci-engine.say: $engine-is-running ?? "stop" !! "go infinite";
@@ -271,10 +302,17 @@ sub MAIN($master!) {
                 }
             }
             when BOOK {
+                my %find;
                 try {
-                    my $move = find-book-move;
-                    note "found move {$move.LAN}";
-                    make-move $move;
+                    %find = find-book-move;
+                    make-move %find<move>;
+                    note "found move {%find<move>.LAN} from %find<master>";
+                    CATCH {
+                        default {
+                            note "no book move found for last move, reverting";
+                            undo;
+                        }
+                    }
                 }
             }
         }
