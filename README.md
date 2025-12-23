@@ -1,6 +1,8 @@
 # Chess
 
-Chess-related stuff in Raku
+Chess-related stuff in Raku.
+
+My ultimate, long-term goal with this project is to build a proper chess training app.
 
 ## SYNOPSIS
 
