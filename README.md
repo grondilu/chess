@@ -72,3 +72,4 @@ WIP
  - [ ] read and write [Polyglot books](https://www.chessprogramming.org/PolyGlot)
  - [ ] make the board square as tall as the cursor by default
  - [ ] clean-up and update README
+ - [ ] [raylib](https://www.raylib.com/) support (WIP)
