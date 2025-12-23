@@ -6,7 +6,7 @@
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.32.17",
+    "version" : "0.32.18",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],
@@ -17,7 +17,9 @@
 	    "Terminal::ANSI",
 	    "Terminal::LineEditor",
 	    "DB::SQLite",
-	    "Digest::SHA1::Native"
+	    "Digest::SHA1::Native",
+	    "Raylib::Bindings",
+	    "Raygui::Bindings"
     ],
     "provides" : {
         "Chess"                   : "lib/Chess.rakumod",

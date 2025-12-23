@@ -1,4 +1,5 @@
 use Raylib::Bindings;
+use Raygui::Bindings;
 use Chess::Board;
 use Chess::Colors;
 use Chess::Position;
@@ -7,6 +8,12 @@ use Chess::Moves;
 
 # square size
 constant SS = 100;
+
+package GUI {
+    our constant %status-bar = height => 40;
+    our constant width = 8*SS;
+    our constant height = 8*SS + %status-bar<height>;
+}
 
 my &sigmoid = 8*(* - 1/2) ∘ {$_/(1+$_)} ∘ &exp ∘ (.51082569 * *); # ∘
 
@@ -31,7 +38,7 @@ my Promise $engine-termination = $uci-engine.start.then: { note "stockfish has t
 INIT {
     set-trace-log-level LOG_ERROR;
     with %*ENV<DEBUG> { when m:i/true/ { set-trace-log-level LOG_ALL } }
-    init-window(8*SS, 8*SS, "raylib chessboard");
+    init-window(GUI::width, GUI::height, "raylib chessboard");
     set-target-fps(60);
 }
 END await Promise.allof(
@@ -92,11 +99,15 @@ sub MAIN(*@masters) {
         state @history;
         state @undo;
 
+        state Str $status;
+
         state Move (
             $last-computed-best-move,
             $book-move
         );
         state Bool $engine-is-running = False;
+
+
 
         # Display options
         state Bool $flipped-board = False;
@@ -115,9 +126,9 @@ sub MAIN(*@masters) {
                     with .value{$position} {
                         my $move = .map({ .<move> => .<weight> }).Bag.pick;
                         if $move.defined {
-                            note "found {$move.LAN} from $master";
+                            $status = "found {$move.LAN} from $master";
                             return %( :$master, :$move );
-                        } else { note "$master never faced this position with {$position.turn}"; }
+                        } else { $status = "$master never faced this position with {$position.turn}"; }
                     }
                 }
             } else {
@@ -138,7 +149,7 @@ sub MAIN(*@masters) {
                 CATCH {
                     when X::AdHoc {
                         .note;
-                        note "no move found in books";
+                        $status = "no move found in books";
                     }
                 }
             }
@@ -162,7 +173,7 @@ sub MAIN(*@masters) {
                     $engine-is-running = False;
                 }
                 $uci-engine.say: "position fen {$position.fen}";
-                note "move undone";
+                $status = "move undone";
             }
         }
         sub reset {
@@ -190,8 +201,8 @@ sub MAIN(*@masters) {
         }
         once $engine-best-move.Supply.tap: -> $best-move {
             use Chess::Moves;
-            $last-computed-best-move .= new: $best-move, :color($position.turn), :board($position);
-            note "best move is $best-move";
+            $last-computed-best-move = Move.new: $best-move, :color($position.turn), :board($position);
+            $status = "best move is $best-move";
             %highlights<best-move> = 120;
         }
 
@@ -247,7 +258,8 @@ sub MAIN(*@masters) {
                 draw-rectangle 8*SS - 10, 4*SS - $height-delta + 1, 10, 4*SS + $height-delta, Color.init(255, 255, 255, 128);
             }
 
-            clear-background(init-white);
+            gui-status-bar Rectangle.init(0e0, Num(8*SS), Num(8*SS), Num(%GUI::status-bar<height>)), $status // '';
+            clear-background(Color.init(128, 128, 128, 255));
             draw-fps(10,10) with %*ENV<DEBUG>;
         }
 
@@ -286,39 +298,41 @@ sub MAIN(*@masters) {
             when USER {
                 if is-cursor-on-screen {
                     my ($x, $y) = get-mouse-x, get-mouse-y;
-                    my ($f, $r) = $x, $y Xdiv SS;
-                    ($f, $r) .= map(7 - *) if $flipped-board;
+                    if $x & $y < SS*8 {
+                        my ($f, $r) = $x, $y Xdiv SS;
+                        ($f, $r) .= map(7 - *) if $flipped-board;
 
-                    my $square-name = ("a".."h")[$f] ~ (1..8).reverse[$r];
-                    my $square = square-enum::{$square-name};
-                    set-mouse-cursor $position{$square} ?? MOUSE_CURSOR_POINTING_HAND !! MOUSE_CURSOR_DEFAULT;
+                        my $square-name = ("a".."h")[$f] ~ (1..8).reverse[$r];
+                        my $square = square-enum::{$square-name};
+                        set-mouse-cursor $position{$square} ?? MOUSE_CURSOR_POINTING_HAND !! MOUSE_CURSOR_DEFAULT;
 
-                    if is-mouse-button-pressed(MOUSE_BUTTON_LEFT) {
-                        with $selected-square {
-                            with @legal-moves.first: { .to ~~ $square } {
-                                make-move $_;
-                            }
-                            $selected-square = Any;
-                        } else {
-                            with $position{$square} {
-                                if Chess::Pieces::get-color($_) ~~ $position.turn {
-                                    @legal-moves = $position.moves: :$square;
-                                    $selected-square = $square if @legal-moves.elems > 0;
+                        if is-mouse-button-pressed(MOUSE_BUTTON_LEFT) {
+                            with $selected-square {
+                                with @legal-moves.first: { .to ~~ $square } {
+                                    make-move $_;
+                                }
+                                $selected-square = Any;
+                            } else {
+                                with $position{$square} {
+                                    if Chess::Pieces::get-color($_) ~~ $position.turn {
+                                        @legal-moves = $position.moves: :$square;
+                                        $selected-square = $square if @legal-moves.elems > 0;
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        # the mouse is just hovering
-                        with $selected-square {
-                            # an move origin square has been selected
-                            if $square ~~ @legal-moves».to.any {
-                                # the hovered square is a legal move destination square
-                                # so we highlight it
-                                ($f, $r) .= map(7 - *) if $flipped-board;
-                                draw-rectangle SS*$f, SS*$r, SS, SS, Color.init(0, 245, 0, 128);
+                        } else {
+                            # the mouse is just hovering
+                            with $selected-square {
+                                # an move origin square has been selected
+                                if $square ~~ @legal-moves».to.any {
+                                    # the hovered square is a legal move destination square
+                                    # so we highlight it
+                                    ($f, $r) .= map(7 - *) if $flipped-board;
+                                    draw-rectangle SS*$f, SS*$r, SS, SS, Color.init(0, 245, 0, 128);
+                                }
                             }
-                        }
 
+                        }
                     }
                 }
 
@@ -342,11 +356,11 @@ sub MAIN(*@masters) {
                 try {
                     %find = find-book-move;
                     make-move %find<move>;
-                    note "found move {%find<move>.LAN} from %find<master>";
+                    $status = "found move {%find<move>.LAN} from %find<master>";
                     CATCH {
                         when X::AdHoc {
                             .note;
-                            note "reverting";
+                            $status = "reverting";
                             undo;
                             find-and-highlight-move :!from-masters;
                         }
