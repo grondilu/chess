@@ -18,12 +18,13 @@ has %.tag-pair;
 has Move @.moves;
 has Termination $.termination = unfinished;
 
-multi method new(@moves where { .all ~~ /^[<[a..h]><[1..8]>]**2$/ }) {
+multi method new(@moves where { .all ~~ /^[<[a..h]><[1..8]>]**2<[qrbn]>?/ }) {
     my Chess::Position $position .= new;
     self.new: moves =>
 	my Move @ = @moves
 	    .map: {
-		Move.new: $_, :color($position.turn), :board($position)
+		LEAVE $position.make: $_;
+		Move.new: $_, :color($position.turn), :board($position);
 	    }
 }
 
@@ -50,8 +51,7 @@ method pgn {
 	(black-wins) => '0-1',
 	(draw)       => '½-½',
 	(unfinished) => '*'
-    ){$!termination},
-    "\n"
+    ){$!termination}
     ;
 }
 method positions {
