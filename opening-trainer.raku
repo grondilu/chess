@@ -54,7 +54,7 @@ sub draw-arrow(Square $origin, Square $destination, Bool :$flipped-board, Color 
     draw-triangle |%points<E F G>.map({ Vector2.init(.x, .y) }), $color;
 }
 
-my &sigmoid = 8*(* - 1/2) ∘ {$_/(1+$_)} ∘ &exp ∘ (.51082569 * *); # ∘
+sub sigmoid($_) { 8*(1/(1 +exp(-0.51082569 * $_)) - 1/2) }
 
 sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
 sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
@@ -107,7 +107,7 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
     $uci-engine.stdout.tap: {
         default { .note if DEBUG; proceed; }
         when /"score cp "(\-?\d+)/ { $engine-evaluation = $/[0].Int; proceed; }
-        when /<< pv >> \s $<moves> = [ [<[a..h]><[1..8]>]**2 <[qpbn]>? ]+ % \s /  { %engine<pv>.emit: $<moves> }
+        when /"score cp " $<score> = (\-?\d+) .* << pv >> \s $<moves> = [ [<[a..h]><[1..8]>]**2 <[qpbn]>? ]+ % \s /  { %engine<pv>.emit: $/ }
         when /'bestmove ' ([<[a..h]><[1..8]>]**2 <[qrbn]>?) / { $engine-best-move.emit: "$/[0]" }
     }
     my Promise $engine-termination = $uci-engine.start.then: { note "stockfish has terminated" }
@@ -145,20 +145,18 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
         );
         state Bool $engine-is-running = False;
 
-
-
         # Display options
         state Bool $flipped-board = False;
         state Bool $show-coordinates = False;
-        state UInt %highlights =
+        state %highlights =
             last-move => 0,
             best-move => 0,
             book-move => 0,
-            pv-move   => 0;
+            pv-move   => %( score => Int, fade => 0 );
 
         sub find-book-move(Bool :$from-masters = True) {
             if $from-masters {
-                for %books {
+                for %books.pick(*) {
                     my $master = .key;
                     next if @masters and $master eq @masters.none;
                     #note "searching $master.bin";
@@ -170,7 +168,7 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
                     }
                 }
             } else {
-                for %books {
+                for %books.pick(*) {
                     with .value{$position} {
                         return %( :move(.map({ .<move> }).pick) )
                     }
@@ -181,7 +179,7 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
         }
         sub find-and-highlight-move(Bool :$from-masters = False) {
             try {
-                my %find = find-book-move :!from-masters;
+                my %find = find-book-move :$from-masters;
                 %highlights<book-move> = 60;
                 $book-move = %find<move>;
                 CATCH {
@@ -216,7 +214,7 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
         }
         sub reset {
             @undo = ();
-            note pgn;
+            note pgn if DEBUG;
             @history = ();
             %highlights{$_} = 0 for %highlights.keys;
             if $engine-is-running {
@@ -241,9 +239,9 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
                 %highlights<best-move> = 120;
             }
             %engine<pv>.Supply.tap: -> Match $pv {
-                note "pv: {$pv.substr: 0, 80}" if DEBUG;
-                $pv-move = Move.new: $pv.words.head, :color($position.turn), :board($position);
-                %highlights<pv-move> = 120;
+                note "pv: {$pv<moves>.substr: 0, 80}, score {$pv<score>}" if DEBUG;
+                $pv-move = Move.new: $pv<moves>.words.head, :color($position.turn), :board($position);
+                %highlights<pv-move> = %( score => $pv<score>.Int, fade => 120 );
             }
         }
 
@@ -313,7 +311,7 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
         if %highlights<best-move> > 0 {
             with %best-move{$position} {
                 draw-arrow .from, .to, :$flipped-board,
-                    color => Color.init: 0, 255, 0, %highlights<best-move>--;
+                    color => Color.init: 255, 255, 0, %highlights<best-move>--;
             }
         }
         if %highlights<book-move> > 0 {
@@ -323,10 +321,12 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
                     color => Color.init: 0, 0, 255, %highlights<book-move>--;
             }
         }
-        if %highlights<pv-move> > 0 {
+        if %highlights<pv-move><fade> > 0 {
             if $engine-is-running {
                 with $pv-move {
-                    draw-arrow .from, .to, :$flipped-board, color => Color.init: 0, 255, 255, %highlights<pv-move>--;
+                    use Color;
+                    my Color $color .= new: hsv => (120*(4 + sigmoid(%highlights<pv-move><score>/30))/8, 100, 100);
+                    draw-arrow .from, .to, :$flipped-board, color => Raylib::Bindings::Color.init: |$color.rgb, %highlights<pv-move><fade>--;
                 }
             }
         }
@@ -336,7 +336,7 @@ sub MAIN(*@masters, :$engine = 'stockfish') {
             when 'h' { %highlights<last-move> = 60 }
             when 'r' { reset }
             when 'g' { note pgn }
-            when 'b' { find-and-highlight-move :!from-masters }
+            when 'b' { find-and-highlight-move :from-masters }
             when 'u' { undo; undo }
         }
         if is-key-pressed KEY_SPACE {
