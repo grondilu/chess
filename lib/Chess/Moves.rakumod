@@ -19,6 +19,24 @@ class QueensideCastle {...}
 
 my regex annotation { <[+#]>?<[!?]>** 0..2 }
 
+our sub uci-to-uint(Str $uci) returns uint16 {
+    constant a = 'a'.ord;
+    my uint16 $uint =
+	    ($uci.substr(2, 1).ord - a) + 
+	    ($uci.substr(3, 1).Int - 1) +< 3 + 
+	    ($uci.substr(0, 1).ord - a) +< 6 + 
+	    ($uci.substr(1, 1).Int - 1) +< 9;
+    if $uci.chars > 4 {
+         given $uci.substr(4, 1) {
+	     when 'n' { $uint += 1 +< 12; }
+	     when 'b' { $uint += 2 +< 12; }
+	     when 'r' { $uint += 3 +< 12; }
+	     when 'q' { $uint += 4 +< 12; }
+	 }
+    }
+    return $uint;
+}
+    
 class Move {
     has Square ($.from, $.to);
     our subset FullyDefined of ::?CLASS where { defined .from & .to : }
@@ -48,6 +66,7 @@ class Move {
     multi method pseudo-SAN(capture:) {
 	self.piece-type.symbol.uc ~ 'x' ~ square-enum($!to)
     }
+    method WHICH { self.uint.base(36) }
     method uint(FullyDefined:) {
 	# http://hgm.nubati.net/book_format.html
 	reduce 8 * * + *,
@@ -78,14 +97,18 @@ class Move {
 	    }
 	}
 	return self.bless:
-	from => square-enum::{$/[0][0]},
-	to   => square-enum::{$/[0][1]}
+	    from => square-enum::{$/[0][0]},
+	    to   => square-enum::{$/[0][1]}
     }
-    multi method new(Str $ where /^(<[a..h]><[1..8]>)(<[a..h]><[18]>)(<[qbnr]>)$/) {
+    multi method new(Str $ where /:i ^(<[a..h]><[1..8]>)(<[a..h]><[18]>)(<[qbnr]>)$/) {
 	my ($from, $to) = $/[^2].map: { square-enum::{$_} }
-	my piece $promotion = %(<q b n r> Z=> piece::<♕ ♗ ♘ ♖>){$/[2]};
+	my piece $promotion = %(<q b n r> Z=> piece::<♕ ♗ ♘ ♖>){$/[2].lc};
 	$promotion = ¬$promotion if ~$/[1] ~~ /1$/;
 	PawnMove.bless( :$from, :$to ) but Promotion[$promotion];
+    }
+    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2/) {
+	my ($from, $to) = $/[0][^2].map: { square-enum::{$_} }
+	samewith :$from, :$to
     }
     multi method new(
 	Str $ where /^ <Chess::PGN::SAN><[#!]>?<[!?]>** ^2 $/,
@@ -208,7 +231,7 @@ class PawnMove is Move is export {
 	my ($delta-rank, $delta-file) = (&rank, &file).map: { abs(.($to) - .($from)) }
 	my $blessing = self.bless: :$from, :$to;
 	if    $delta-rank == 2 && $delta-file == 0  { return $blessing }
-	elsif $delta-rank|$delta-file !== 1         { fail "illegal pawn move" }
+	elsif $delta-rank|$delta-file !== 1         { fail "illegal pawn move from $from to $to" }
 	elsif file($to) !== file($from)             { $blessing does capture     }
 	with $/[1]                                  { $blessing does Promotion[%(<b n r q> Z=> bishop, knight, rook, queen){$_}] }
 	return $blessing;
