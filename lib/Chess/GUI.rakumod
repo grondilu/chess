@@ -1,5 +1,5 @@
+unit class Chess::GUI;
 use Chess::Board;
-unit class Chess::GUI is Chess::Board;
 use Raylib::Bindings;
 use Chess::Position;
 use Chess::Pieces;
@@ -7,9 +7,15 @@ use Chess::Colors;
 
 # ATTRIBUTES
 # ----------
-has Promise $.main-loop;
+has Chess::Position $.position handles <AT-POS DELETE-POS> .= new;
+has Promise     $.main-loop;
 has Proc::Async $.engine;
+
+class Arrow {...}
+has Arrow @!arrows;
+
 has @!undo;
+has @!history;
 
 multi sub await(::?CLASS $gui) is export { await $gui.main-loop; }
 
@@ -20,6 +26,7 @@ multi sub await(::?CLASS $gui) is export { await $gui.main-loop; }
 constant SS = 100;
 
 # basic 2D linear algebra
+# Raylib::Bingings::Vector2 is a bit weird, so I'm creating a simpler class
 class Vec2 {
     has Num ($.x, $.y);
     multi infix:<+>(::?CLASS $a, ::?CLASS $b) returns ::?CLASS is export { ::?CLASS.new: :x($a.x + $b.x), :y($a.y + $b.y) }
@@ -36,44 +43,56 @@ class Vec2 {
     }
 }
 
-sub draw-arrow(Square $origin, Square $destination, Bool :$flipped-board, Color :$color = init-red) {
-    import Vec2;
+class Arrow {
+    has Square ($.origin, $.destination);
+    method draw(Bool :$flipped-board = False, Color :$color = init-red) {
+	import Vec2;
+	my Vec2 ($from, $to) = ($!origin, $!destination).map: { square-to-vec2 $_, :$flipped-board }
+	my Vec2 $i = normalized($to - $from);
+	my Vec2 $j = normalized Vec2.new: :x(-$i.y), :y($i.x);
 
-    my Vec2 ($from, $to) = ($origin, $destination).map: { square-to-vec2 $_, :$flipped-board }
-    my Vec2 $i = normalized($to - $from);
-    my Vec2 $j = normalized Vec2.new: :x(-$i.y), :y($i.x);
-
-    #               E+
-    #                | \
-    #  A+------------+  \
-    #   |            D   \
-    #   |                 +G
-    #   |            C   /
-    #  B+------------+  /
-    #                | /
-    #               F+
-    my %points =
-        A => $from + (SS/4)*$j - SS/10*$i,
-        B => $from - (SS/4)*$j - SS/10*$i,
-        C => $from + norm($to - $from)*$i - 4*SS/10*$i + (SS/4)*$j,
-        D => $from + norm($to - $from)*$i - 4*SS/10*$i - (SS/4)*$j,
-        E => $from + norm($to - $from)*$i - 4*SS/10*$i - SS/2*$j,
-        F => $from + norm($to - $from)*$i - 4*SS/10*$i + SS/2*$j,
-        G => $from + norm($to - $from)*$i 
-        ;
-    draw-triangle |%points<A C B>.map({ Vector2.init(.x, .y) }), $color;
-    draw-triangle |%points<B C D>.map({ Vector2.init(.x, .y) }), $color;
-    draw-triangle |%points<E F G>.map({ Vector2.init(.x, .y) }), $color;
+	#               E+
+	#                | \
+	#  A+------------+  \
+	#   |            D   \
+	#   |                 +G
+	#   |            C   /
+	#  B+------------+  /
+	#                | /
+	#               F+
+	my %points =
+	    A => $from + (SS/4)*$j - SS/10*$i,
+	    B => $from - (SS/4)*$j - SS/10*$i,
+	    C => $from + norm($to - $from)*$i - 4*SS/10*$i + (SS/4)*$j,
+	    D => $from + norm($to - $from)*$i - 4*SS/10*$i - (SS/4)*$j,
+	    E => $from + norm($to - $from)*$i - 4*SS/10*$i - SS/2*$j,
+	    F => $from + norm($to - $from)*$i - 4*SS/10*$i + SS/2*$j,
+	    G => $from + norm($to - $from)*$i 
+	    ;
+	for <A C B>, <B C D>, <E F G> {
+	    draw-triangle |%points{@$_}.map({ Vector2.init(.x, .y) }), $color;
+	}
+    }
 }
 
 sub sigmoid($_) { 8*(1/(1 +exp(-0.51082569 * $_)) - 1/2) }
 sub term:<DEBUG> returns Bool { with %*ENV<DEBUG> { return so /:i true/ } else { return False } }
 
-sub draw-eval-bar(Int $evaluation, color :$turn) {
-    my $height-delta = round(SS*($turn ~~ black ?? -1 !! +1)*&sigmoid($evaluation / 100));
+method draw-eval-bar(Int $evaluation) {
+    my $height-delta = round(SS*($!position.turn ~~ black ?? -1 !! +1)*&sigmoid($evaluation / 100));
     draw-rectangle 8*SS - 10, 0, 10, 4*SS - $height-delta, Color.init(0, 0, 0, 128);
     draw-rectangle 8*SS - 10, 4*SS - $height-delta + 1, 10, 4*SS + $height-delta, Color.init(255, 255, 255, 128);
 }
+
+use Chess::Moves;
+method make-move(Move $move, :%sounds) {
+    @!undo.push: $!position.make: $move;
+    @!history.push: $move;
+    play-sound %sounds{$move ~~ Chess::Moves::capture ?? 'Capture' !! 'Move'};
+    play-sound %sounds<Check> if $!position ~~ Check;
+}
+
+enum PieceState < IDLE SELECTED DRAGGED >;
 
 # CONSTRUCTION
 # ------------
@@ -82,6 +101,8 @@ submethod BUILD(:$engine = 'stockfish') {
     sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
     sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
 
+    # arrow test
+    #@!arrows.push: Arrow.new: :origin(e2), :destination(f5);
     # ENGINE start
     $!engine .= new: :w, |$engine.words;
     my $engine-termination = $!engine.start.then: { note "stockfish has terminated" }
@@ -106,23 +127,43 @@ submethod BUILD(:$engine = 'stockfish') {
 	}
 	LEAVE for @piece-symbols { unload-texture %textures{$_}; }
 
+	my %sounds;
+	init-audio-device;
+	given "resources/sounds" {
+	    %sounds<Move>    = load-sound "$_/Move.ogg";
+	    %sounds<Capture> = load-sound "$_/Capture.ogg";
+	    %sounds<Check>   = load-sound "$_/Check.mp3";
+	    %sounds<Correct> = load-sound "$_/correct-156911.mp3";
+	    %sounds<Wrong>   = load-sound "$_/wronganswer-37702.mp3";
+	}
+	LEAVE close-audio-device;
+	LEAVE unload-sound $_ for %sounds.values;
+
 	until window-should-close {
 	    ENTER begin-drawing;
 	    LEAVE end-drawing;
 
+	    state Bool $on-board         = False;
 	    state Bool $show-coordinates = False;
 	    state Bool $flipped-board    = False;
 	    state %grabbed-piece;
 
+	    state Vec2 $drag-offset;
+	    state PieceState $piece-state = IDLE;
 	    state Square $selected-square;
 
-	    sub get-square(Vector2 $pos) returns Square {
+	    sub get-square(Vec2 $pos) returns Square {
 		my ($x, $y) = $pos.x, $pos.y;
 		return Square unless 0 ≤ $x & $y < 8*SS;
 		my ($f, $r) = $x, $y Xdiv SS;
 		($f, $r) .= map(7 - *) if $flipped-board;
 
 		return square-enum::{("a".."h")[$f] ~ (1..8).reverse[$r]};
+	    }
+	    sub get-square-center(Square $s) returns Vec2 {
+		my Num(Cool) ($x, $y) = file($s)*SS + (SS div 2), rank($s)*SS + (SS div 2);
+		($x, $y) .= map: 8*SS - * if $flipped-board;
+		return Vec2.new: :$x, :$y;
 	    }
 
 	    # draw chessboard
@@ -156,10 +197,11 @@ submethod BUILD(:$engine = 'stockfish') {
 			$x = 7*SS - $x;
 			$y = 7*SS - $y;
 		    }
-		    if %grabbed-piece and $s ~~ %grabbed-piece<from><square> {
+		    if $piece-state ~~ DRAGGED && $s ~~ $selected-square {
 			given get-mouse-position {
-			    $x += (.x - %grabbed-piece<from><mouse-position>.x).Int;
-			    $y += (.y - %grabbed-piece<from><mouse-position>.y).Int;
+			    my $square-center = get-square-center $s;
+			    $x += (.x - $drag-offset.x - $square-center.x).Int;
+			    $y += (.y - $drag-offset.y - $square-center.y).Int;
 			}
 		    }
 		    with self[$s] {
@@ -167,35 +209,76 @@ submethod BUILD(:$engine = 'stockfish') {
 		    }
 		}
 	    }
+	    # draw arrows
+	    LEAVE { .draw for @!arrows; }
 
+	    with $selected-square {
+		my @legal-moves = $!position.moves: :square($_);
+		if @legal-moves > 0 {
+		    my $center = get-square-center $_;
+		    draw-rectangle $center.x.UInt - (SS div 2), $center.y.UInt - (SS div 2), SS, SS, Color.init(0, 255, 0, 128);
+		    for @legal-moves {
+			$center = get-square-center .to;
+			draw-circle $center.x.Int, $center.y.Int, SS/5e0, Color.init(0, 128, 0, 128);
+		    }
+		}
+	    }
 	    with chr get-char-pressed {
 		when 'f' { $flipped-board     ?^= True;                 }
 		when 'c' { $show-coordinates    = !$show-coordinates    }
 	    }
 
 	    if is-cursor-on-screen {
-		my $mouse-position = get-mouse-position;
-		if my $square = get-square($mouse-position) {
-		    set-mouse-cursor self.board[$square] ?? MOUSE_CURSOR_POINTING_HAND !! MOUSE_CURSOR_DEFAULT;
 
-		    if is-mouse-button-up(MOUSE_BUTTON_LEFT) {
-			if %grabbed-piece {
-			    self.board[get-square $mouse-position] =
-			    self.board[%grabbed-piece<from><square>]:delete;
-			    %grabbed-piece = ();
+		my $mouse-position = Vec2.new: :x(.x), :y(.y) given get-mouse-position;
+		$on-board = so 0 ≤ ($mouse-position.x & $mouse-position.y) < 8*SS;
+		my $square = get-square $mouse-position;
+
+		# shaping cursor appropriately
+		with self[$square] {
+		    set-mouse-cursor Chess::Pieces::get-color($_) ~~ $!position.turn ?? MOUSE_CURSOR_POINTING_HAND !! MOUSE_CURSOR_DEFAULT;
+		} else { set-mouse-cursor MOUSE_CURSOR_DEFAULT }
+
+
+		my %mouse =
+		    pressed      => is-mouse-button-pressed(MOUSE_BUTTON_LEFT),
+		    down         => is-mouse-button-down(MOUSE_BUTTON_LEFT),
+		    released     => is-mouse-button-released(MOUSE_BUTTON_LEFT);
+
+		given $piece-state {
+		    import Vec2;
+		    when IDLE {
+			if %mouse<pressed> && $on-board {
+			    if self[$square] and Chess::Pieces::get-color(self[$square]) ~~ $!position.turn {
+				$selected-square = $square;
+				$piece-state = SELECTED;
+				$drag-offset = $mouse-position - get-square-center($square);
+			    }
 			}
-		    } elsif !%grabbed-piece and is-mouse-button-down(MOUSE_BUTTON_LEFT) {
-			with self[$square] {
-			    %grabbed-piece = from => %( :$mouse-position, :$square ), type => self[$square];
+		    }
+		    when SELECTED {
+			if %mouse<down> && $square ~~ $selected-square && norm($mouse-position - get-square-center($square) - $drag-offset) > 20 {
+			    $piece-state = DRAGGED;
+			}
+			proceed;
+		    }
+		    default {
+			if (%mouse<released> && $piece-state ~~ DRAGGED) || (%mouse<pressed> && $piece-state ~~ SELECTED) {
+			    my @legal-moves = $!position.moves: :square($selected-square);
+			    if $square ~~ @legal-moves».to.any {
+				use Chess::Moves;
+				self.make-move: :%sounds, Move.new: :from($selected-square), :to($square);
+
+			    }
+			    $piece-state = IDLE;
+			    $selected-square = Square;
 			}
 		    }
 		}
 	    }
 	}
     }
-
-
 }
 
 
-# vim: shiftwidth=4
+# vim: shiftwidth=4 nu
