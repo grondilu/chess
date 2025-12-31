@@ -8,8 +8,7 @@ use Chess::Colors;
 # ATTRIBUTES
 # ----------
 has Chess::Position $.position handles <AT-POS DELETE-POS> .= new;
-has Promise     $.main-loop;
-has Proc::Async $.engine;
+has Promise     $.raylib;
 
 class Arrow {...}
 has Arrow @!arrows;
@@ -17,7 +16,7 @@ has Arrow @!arrows;
 has @!undo;
 has @!history;
 
-multi sub await(::?CLASS $gui) is export { await $gui.main-loop; }
+multi sub await(::?CLASS $gui) is export { await $gui.raylib; }
 
 # CONSTANTS
 # ---------
@@ -92,24 +91,23 @@ method make-move(Move $move, :%sounds) {
     play-sound %sounds<Check> if $!position ~~ Check;
 }
 
+method undo {
+    @!undo.pop.() if @!undo;
+    @!history.pop if @!history;
+}
 enum PieceState < IDLE SELECTED DRAGGED >;
 
 # CONSTRUCTION
 # ------------
 #
-submethod BUILD(:$engine = 'stockfish') {
+submethod BUILD {
     sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
     sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
 
     # arrow test
     #@!arrows.push: Arrow.new: :origin(e2), :destination(f5);
-    # ENGINE start
-    $!engine .= new: :w, |$engine.words;
-    my $engine-termination = $!engine.start.then: { note "stockfish has terminated" }
-    await $!engine.ready;
 
-    $!main-loop = start {
-	LEAVE await Promise.allof: start { $!engine.say: "quit" }, $engine-termination;
+    $!raylib = start {
 
 	set-trace-log-level LOG_ERROR;
 	if DEBUG { set-trace-log-level LOG_ALL }
@@ -226,6 +224,7 @@ submethod BUILD(:$engine = 'stockfish') {
 	    with chr get-char-pressed {
 		when 'f' { $flipped-board     ?^= True;                 }
 		when 'c' { $show-coordinates    = !$show-coordinates    }
+		when 'u' { self.undo }
 	    }
 
 	    if is-cursor-on-screen {
