@@ -31,7 +31,7 @@ multi prefix:<~>(Square $_ --> Str) is export { ('a'..'h')[.&file] ~ (1..8)[7-.&
     Keeping track of which piece is on a given square.
     Here the length of 128 is due to the use of a 0x88 board
 )
-has piece @.board[128];
+has piece @.board[128] handles <AT-POS>;
 #|(
     Keeping track of which squares a given piece is on.
     The first element of this buffer is not used
