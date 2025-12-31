@@ -37,6 +37,8 @@ multi method new(Match $/, :&filter!) {
 			default { 1 }
 		    }
 		}}}
+
+		# I should probably use Bag here
 		take $position.uint => %( :move($move.uint), :$weight );
 	    }
 	}.classify(*.key, :as(*.value))
