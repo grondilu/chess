@@ -115,10 +115,30 @@ method unicode {
 method kitty(Bool :$flip) {
     use Kitty;
     use Terminal::Size;
+    use Terminal::MakeRaw;
     
+    sub get-terminal-size {
+	use Terminal::MakeRaw;
+
+	# Save the current terminal attributes.
+	my $saved_termios = Terminal::MakeRaw::getattr($*IN.native-descriptor);
+	# And once we're done, reset the terminal to it's previous state.
+	LEAVE Terminal::MakeRaw::setattr($*IN.native-descriptor, $saved_termios, :FLUSH);
+
+	# Change the terminal to raw mode.
+	Terminal::MakeRaw::makeraw($*IN.native-descriptor, :FLUSH);
+
+	print "\e[14t";
+	if $*IN.read.decode ~~ m/ "\e[4;" (\d+) ** 2 % ';' / {
+	    return $/[0].map: *.Int;
+	}
+    }
     my winsize $ws = terminal-size;
     my ($rows, $cols) = $ws.rows, $ws.cols;
-    my ($window-height, $window-width) = $ws.ypixel, $ws.xpixel;
+    my ($window-height, $window-width) = get-terminal-size;
+    if $window-height|$window-width == 0 {
+	$window-height = $window-width = 600
+    }
     my ($cell-width, $cell-height) = $window-width div $cols, $window-height div $rows;
 
     my $square-size = $cell-height;
