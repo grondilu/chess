@@ -177,7 +177,7 @@ multi method make(::?CLASS:D: Move::FullyDefined $move) {
 	    }
 	}
     }
-    else { fail "there is no piece on square {square-enum($move.from)}:\n{self.ascii}"; }
+    else { fail "there is no piece on square {square-enum($move.from)} (move is {$move.LAN}):\n{self.ascii}"; }
     with self{$move.to} {
 	my $color = .&Chess::Pieces::get-color;
 	when rook {
@@ -287,9 +287,9 @@ method moves(Bool :$legal = True, piece :$piece, UInt :$square) {
 		}
 	    }
 	}
-	if !$piece.defined || $piece ~~ king {
+	if ($square.defined && self{$square} ~~ king) || (!$square.defined && (!$piece.defined || $piece ~~ king)) {
 	    my $our-king-location = self{$us ~~ white ?? wk !! bk}.pick;
-	    if $piece ~~ king || $square.defined && $square == $our-king-location {
+	    if !$piece.defined || ($piece.defined && $piece ~~ king) || $square.defined && $square == $our-king-location {
 		if kingside ∈ %!castling-rights{$us} {
 		    my Square $castling-from = $our-king-location;
 		    my Square $castling-to   = $castling-from + 2;
@@ -365,7 +365,7 @@ method isInsufficientMaterial returns Bool {
     return False;
 }
 
-method WHICH { self.uint.base(36) }
+method WHICH { ValueObjAt.new: "Position|{self.uint.base(36)}" }
 # http://hgm.nubati.net/book_format.html
 method uint returns uint64 {
     constant $Random64 = Blob[uint64].new: map *.parse-base(16), <
