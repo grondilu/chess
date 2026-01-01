@@ -25,6 +25,8 @@ rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
    +------------------------+
 > say legal-moves startpos;
 [d3 d4 e3 e4 c3 c4 f3 f4 Nf3 Nh3 h3 h4 a3 a4 g3 g4 Na3 Nc3 b3 b4]
+> use Chess::GUI;
+> await Chess::GUI.new;  # full graphical GUI with raylib
  ```
 ## Description
 
@@ -46,18 +48,23 @@ See [the wikipedia article about FEN](http://en.wikipedia.org/wiki/Forsyth%E2%80
 
 ## General utilities
 
-### Graphical display
+### Graphic, in-terminal display
 
 In addition to the ASCII representation mentioned above,
-there are two other possibilities to display a chess position:
+there are several other possibilities to display a chess position:
 
   - one is using unicode chess characters, along with escape code sequences to change the background and foreground colors of each square.
   - the other is using [Kitty's graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/).  This second solution is a bit slow
   at startup, it requires [ImageMagick](https://imagemagick.org/script/command-line-tools.php) to be installed on your system,
-  and it's not very robust to things like terminal zoom or scrolling.  It looks very good though, using the same piece set as the default one
+  and it's not very robust to things like terminal zoom, scrolling or even clearing.  It looks very good though, using the same piece set as the default one
   on lichess.
 
 ![showing the start position ascii, unicode and kitty](https://i.imgur.com/yX5FAUt.png)
+
+### Graphical User Interface
+
+As a work in progress, a graphical user interface using [raylib](http://www.raylib.com) is being developed.  It will eventually be used
+to create a the opening trainer mentioned above.
 
 ### Polyglot books
 
@@ -74,4 +81,4 @@ WIP
  - [ ] read and write [Polyglot books](https://www.chessprogramming.org/PolyGlot)
  - [ ] make the board square as tall as the cursor by default
  - [ ] clean-up and update README
- - [ ] [raylib](https://www.raylib.com/) support (WIP)
+ - [ ] GUI with [raylib](https://www.raylib.com/) support (WIP)

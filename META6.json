@@ -1,12 +1,12 @@
 {
     "auth" : "zef:grondilu",
     "authors" : [
-	"Lucien Grondin"
+	"Lucien Grondin - grondilu"
     ],
     "perl" : "6.*",
     "name" : "Chess",
     "license" : "Artistic-2.0",
-    "version" : "0.33.5",
+    "version" : "0.33.6",
     "description" : "Chess-related stuff in raku.",
     "build-depends" : [ ],
     "test-depends" : [ ],

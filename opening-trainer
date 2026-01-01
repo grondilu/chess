@@ -1,0 +1,80 @@
+#!/usr/bin/env -S raku -Ilib
+use Chess::GUI;
+use DB::SQLite;
+
+my DB::SQLite $db .= new: filename => "repertoire.db";
+
+sub best-move(
+    Str :$fen,
+    Str :$command = 'stockfish',
+    UInt :$movetime = 30_000
+) {
+    my Proc::Async $engine .= new: |$command.words, :w;
+
+    LEAVE return my Promise $best-move .= new;
+    start {
+        react {
+            whenever $engine.stdout.lines {
+                when /:sigspace ^bestmove ([<[a..h]><[1..8]>]**2<[qbnr]>?)/ {
+                    $best-move.keep: $/[0].Str;
+                    $engine.say: "quit";
+                }
+            }
+            whenever $engine.start {
+                note "engine has stopped";
+                done;
+            }
+            whenever $engine.ready {
+                $engine.say: "position fen $_" with $fen;
+                $engine.say: "go movetime $movetime";
+            }
+        }
+    }
+}
+
+sub MAIN {
+    use Chess::Book;
+
+    my Chess::Book $book .= new: q{resources/masters/Carlsen.bin}.IO;
+    my Chess::GUI $gui .= new;
+
+    react {
+        whenever $gui.raylib { done }
+        whenever $gui.new-move.Supply {
+            my @moves = flat $db.query('select move from chosen_moves where position = ?', .<position>.uint.base(36)).array;
+            if @moves == 0 {
+                note "no move known in the repertoire, asking stockfish";
+                $gui.lock;
+                best-move(fen => .<position>.fen, movetime => 5_000).then: {
+                    use Chess::Moves;
+                    my Move $move .= new: .result;
+                    note "found best move: $move";
+                    $gui.add-arrow: :from($move.from), :to($move.to);
+                    $gui.unlock;
+                };
+            } elsif @moves > 1 {
+                # this really should not happen
+                die "unexpected number of moves in the repertoire";
+            } else {
+                my $move = @moves.head;
+                if $move !== .<move>.uint {
+                    use Chess::Moves;
+                    note "we should reset! ($move vs {.<move>.uint})";
+                    $gui.play-sound: :wrong;
+                    dd @moves;
+                    $gui.reset;
+                } else {
+                    with $book{$gui.position}.map({ .<move> => .<weight> }).Bag.pick {
+                        $gui.make-move: $_;
+                    } else {
+                        note "no move in the book!";
+                        $gui.reset;
+                    }
+                }
+            }
+        }
+    }
+    note "bye!";
+}
+
+# vim: ft=raku shiftwidth=4 nowrap expandtab nu
