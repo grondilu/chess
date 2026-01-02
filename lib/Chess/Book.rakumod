@@ -7,7 +7,7 @@ use Chess::PGN;
 
 has blob8 $.data;
 
-multi method new(IO::Path $path where /'.bin'$/) { self.bless: data => $path.slurp: :bin, :close }
+multi method new(IO::Path $path where /\. [ bin | polyglot ]$/) { self.bless: data => $path.slurp: :bin, :close }
 
 sub default-filter(Match $/, Chess::Position $ --> UInt) { return 1 }
 multi method new(
@@ -60,6 +60,58 @@ multi method new(Match $/, :&filter!) {
     }
 }
 
+sub polyglot-search(Chess::Position $position, IO::Path $book) is export {
+    constant $entry-size = 16; # bytes
+
+    my $fh = $book.open: :bin;
+
+    # getting file size
+    $fh.seek: 0, SeekFromEnd;
+    my UInt $size-in-bytes = $fh.tell;
+    die "did not expect this size" unless $size-in-bytes %% $entry-size;
+    my UInt $num-entries = $size-in-bytes div $entry-size;
+    my uint64 $key = $position.uint;
+    my UInt ($left, $right) = 0, $num-entries - 1;
+    my UInt $first-match;
+    while $left ≤ $right {
+	my UInt $middle = ($left + $right) div 2;
+	my UInt $offset = $entry-size * $middle;
+	$fh.seek: $offset;
+	given $fh.read($entry-size).read-uint64(0, BigEndian) {
+	    when $key {
+		$first-match = $offset;
+		last;
+	    }
+	    when * < $key { $left = $middle + 1; }
+	    default { $right = $middle - 1; }
+	}
+    }
+    return without $first-match;
+    return gather {
+	LEAVE $fh.close;
+	$fh.seek: -$entry-size, SeekFromCurrent;
+	loop {
+	    my $entry = $fh.read: $entry-size;
+	    last unless $key == $entry.read-uint64(0, BigEndian);
+	    take %(
+		move   => Move.new($entry.read-uint16(8, BigEndian)),
+		weight =>          $entry.read-uint16(10, BigEndian),
+		learn  =>          $entry.read-uint32(12, BigEndian)
+	    );
+	    $fh.seek: -2*$entry-size, SeekFromCurrent;
+	}
+	$fh.seek: $first-match + $entry-size, SeekFromBeginning;
+	loop {
+	    my $entry = $fh.read: $entry-size;
+	    last unless $key == $entry.read-uint64(0, BigEndian);
+	    take %(
+		move   => Move.new($entry.read-uint16(8, BigEndian)),
+		weight =>          $entry.read-uint16(10, BigEndian),
+		learn  =>          $entry.read-uint32(12, BigEndian)
+	    );
+	}
+    }
+}
 
 method AT-KEY(Chess::Position $position) {
     constant $entry-size = 16; # bytes
@@ -93,8 +145,8 @@ method AT-KEY(Chess::Position $position) {
 		    learn  =>          $entry.read-uint32(12, BigEndian)
 		);
 	} {
-	    for $first-match     ^..  * -> $i { .($i) }
 	    for $first-match, *-1 ... * -> $i { .($i) }
+	    for $first-match     ^..  * -> $i { .($i) }
 	}
     }
 }
