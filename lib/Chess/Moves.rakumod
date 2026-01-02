@@ -41,7 +41,7 @@ class Move {
     has Square ($.from, $.to);
     our subset FullyDefined of ::?CLASS where { defined .from & .to : }
     method LAN(FullyDefined:) { ($!from, $!to).map({ square-enum($_) }).fmt("%s", '') }
-    method gist { self.LAN }
+    method Str { self.LAN }
     multi method piece-type(KnightMove:) { knight }
     multi method move-pieces(FullyDefined: Chess::Board $board) {
 	my piece $from = $board{$!from}<>;
