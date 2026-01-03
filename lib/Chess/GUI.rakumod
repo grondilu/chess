@@ -359,7 +359,6 @@ submethod BUILD {
 				$selected-square = Square;
 				$!new-move.emit: %( :$move, :$position );
 			    } else {
-				note "going back to IDLE state";
 				$!board-state = IDLE;
 				$selected-square = Square;
 			    }
