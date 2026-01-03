@@ -93,7 +93,11 @@ has Bool $!show-coordinates = False;
 has BoardState $!board-state = IDLE;
 
 has %!textures;
-has %!sounds;
+
+package MoveSound {
+    enum name <Move Wrong Correct Check Capture>;
+}
+has %!sounds{MoveSound::name};
 
 sub sigmoid($_) { 8*(1/(1 +exp(-0.51082569 * $_)) - 1/2) }
 sub term:<DEBUG> returns Bool { with %*ENV<DEBUG> { return so /:i true/ } else { return False } }
@@ -109,6 +113,7 @@ method quit { close-window }
 
 {
     use Color;
+
     method add-arrow(Str :$name = (^2**32).pick.base(36), square-enum :$from, square-enum :$to, Color :$color) {
 	note "adding arrow";
 	my ($origin, $destination) = $from, $to;
@@ -121,8 +126,13 @@ method draw-eval-bar(Int $evaluation) {
     draw-rectangle 8*SS - 10, 4*SS - $height-delta + 1, 10, 4*SS + $height-delta, Color.init(255, 255, 255, 128);
 }
 
-multi method play-sound(:$wrong!)   { play-sound %!sounds<Wrong>; }
-multi method play-sound(:$correct!) { play-sound %!sounds<Correct>; }
+multi method play-sound(MoveSound::name $key) {
+    with %!sounds{$key} {
+	play-sound $_ if is-sound-valid $_
+    }
+}
+multi method play-sound(:$correct!) { self.play-sound: MoveSound::Correct; }
+multi method play-sound(:$wrong!  ) { self.play-sound: MoveSound::Wrong;   }
 
 use Chess::Moves;
 method make-move(Move $move) {
@@ -130,8 +140,10 @@ method make-move(Move $move) {
     @!undo.push: $!position.make: $move;
     @!history.push: $move;
     unless $!mute {
-	play-sound %!sounds{$move ~~ Chess::Moves::capture ?? 'Capture' !! 'Move'};
-	play-sound %!sounds<Check> if $!position ~~ Check;
+	if $move ~~ Chess::Moves::capture {
+	    self.play-sound: MoveSound::Capture;
+	} else { self.play-sound: MoveSound::Move }
+	self.play-sound: MoveSound::Check if $!position ~~ Check;
     }
 }
 
@@ -180,11 +192,11 @@ submethod BUILD {
 
 	init-audio-device;
 	given "resources/sounds" {
-	    %!sounds<Move>    = load-sound "$_/Move.ogg";
-	    %!sounds<Capture> = load-sound "$_/Capture.ogg";
-	    %!sounds<Check>   = load-sound "$_/Check.mp3";
-	    %!sounds<Correct> = load-sound "$_/correct-156911.mp3";
-	    %!sounds<Wrong>   = load-sound "$_/wronganswer-37702.mp3";
+	    %!sounds{MoveSound::Move}    = load-sound "$_/Move.ogg";
+	    %!sounds{MoveSound::Capture} = load-sound "$_/Capture.ogg";
+	    %!sounds{MoveSound::Check}   = load-sound "$_/Check.mp3";
+	    %!sounds{MoveSound::Correct} = load-sound "$_/correct-156911.mp3";
+	    %!sounds{MoveSound::Wrong}   = load-sound "$_/wronganswer-37702.mp3";
 	}
 	LEAVE close-audio-device;
 	LEAVE unload-sound $_ for %!sounds.values;

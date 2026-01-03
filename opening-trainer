@@ -1,80 +1,80 @@
 #!/usr/bin/env -S raku -Ilib
 use Chess::GUI;
+use Chess::Moves;
 use DB::SQLite;
 
-my DB::SQLite $db .= new: filename => "repertoire.db";
+sub MAIN($book-path = q{resources/lichess-elite.polyglot}.IO) {
 
-sub best-move(
-    Str :$fen,
-    Str :$command = 'stockfish',
-    UInt :$movetime = 30_000
-) {
-    my Proc::Async $engine .= new: |$command.words, :w;
-
-    LEAVE return my Promise $best-move .= new;
-    start {
-        react {
-            whenever $engine.stdout.lines {
-                when /:sigspace ^bestmove ([<[a..h]><[1..8]>]**2<[qbnr]>?)/ {
-                    $best-move.keep: $/[0].Str;
-                    $engine.say: "quit";
-                }
-            }
-            whenever $engine.start {
-                note "engine has stopped";
-                done;
-            }
-            whenever $engine.ready {
-                $engine.say: "position fen $_" with $fen;
-                $engine.say: "go movetime $movetime";
-            }
-        }
-    }
-}
-
-sub MAIN {
     use Chess::Book;
 
-    my Chess::Book $book .= new: q{resources/masters/Carlsen.bin}.IO;
+    my DB::SQLite $db  .= new: filename => "repertoire.db";
     my Chess::GUI $gui .= new;
 
-    react {
-        whenever $gui.raylib { done }
-        whenever $gui.new-move.Supply {
-            my @moves = flat $db.query('select move from chosen_moves where position = ?', .<position>.uint.base(36)).array;
-            if @moves == 0 {
-                note "no move known in the repertoire, asking stockfish";
-                $gui.lock;
-                best-move(fen => .<position>.fen, movetime => 5_000).then: {
-                    use Chess::Moves;
-                    my Move $move .= new: .result;
-                    note "found best move: $move";
-                    $gui.add-arrow: :from($move.from), :to($move.to);
-                    $gui.unlock;
-                };
-            } elsif @moves > 1 {
-                # this really should not happen
-                die "unexpected number of moves in the repertoire";
-            } else {
-                my $move = @moves.head;
-                if $move !== .<move>.uint {
-                    use Chess::Moves;
-                    note "we should reset! ($move vs {.<move>.uint})";
-                    $gui.play-sound: :wrong;
-                    dd @moves;
-                    $gui.reset;
+    sub best-move(Chess::Position $position) returns Move {
+        with $db.query('SELECT move FROM chosen_moves WHERE position = ?', $position.uint.base(36)).value {
+            return Move.new($_);
+        } else { return Move }
+    }
+
+    sub term:<search-book> returns Bag {
+            polyglot-search($gui.position, $book-path)
+            .map({ .<move> => .<weight> })
+            .Bag
+    }
+
+    sub reset {
+        $gui.reset;
+        if rand < .5 {
+            note "flipping board";
+            with search-book {
+                if .elems == 0 {
+                    note "no move found at all in $book-path"
+                } elsif .values.all == 0 {
+                    note "all weights are zero!"
                 } else {
-                    with $book{$gui.position}.map({ .<move> => .<weight> }).Bag.pick {
-                        $gui.make-move: $_;
+                    note my $pick = .pick;
+                    $gui.make-move: $pick;
+                }
+            }
+            $gui.flip;
+        }
+        $gui.unlock;
+    }
+
+    reset;
+    $gui.new-move.Supply.tap: {
+        my ($move, $position) = .<move position>;
+        my $best-move = best-move $position;
+        if !$best-move.defined {
+            note "unknown move";
+            $gui.undo;
+            $gui.lock;
+            Promise.in(1).then: { $gui.reset; $gui.unlock }
+        } else {
+            if $move eq best-move($position) {
+                note "that's the correct move";
+                #$gui.play-sound: :correct;
+                with search-book {
+                    if .elems == 0 {
+                        note "no move found at all in $book-path"
+                    } elsif .values.all == 0 {
+                        note "all weights are zero!"
                     } else {
-                        note "no move in the book!";
-                        $gui.reset;
+                        note my $pick = .pick;
+                        $gui.make-move: $pick;
                     }
                 }
+            } else {
+                use Color;
+                $gui.play-sound: :wrong;
+                $gui.undo;
+                $gui.add-arrow: :from($best-move.from), :to($best-move.to), :color(Color.new: rgba => (255, 0, 0, 64));
+                $gui.lock;
+                Promise.in(3).then: { $gui.reset; $gui.unlock }
             }
         }
     }
-    note "bye!";
+    await $gui.raylib;
 }
 
 # vim: ft=raku shiftwidth=4 nowrap expandtab nu
