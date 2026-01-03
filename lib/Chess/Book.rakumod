@@ -86,7 +86,7 @@ sub polyglot-search(Chess::Position $position, IO::Path $book) is export {
 	    default { $right = $middle - 1; }
 	}
     }
-    return without $first-match;
+    return List.new without $first-match;
     return gather {
 	LEAVE $fh.close;
 	$fh.seek: -$entry-size, SeekFromCurrent;
