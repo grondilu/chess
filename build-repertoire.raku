@@ -6,13 +6,14 @@ use Chess::Moves;
 use Chess::Position;
 use Chess::Book;
 
+constant $MOVETIME = 30_000;
+
 sub MAIN($filename = q{repertoire.db}, :$polyglot-book = q{opening-book.polyglot}) {
 
 	my Chess::GUI $gui .= new;
-	my $book = $polyglot-book.IO;
-	die "$book does not exist"  unless $book.e;
-	die "$book is not readable" unless $book.r;
-
+	die "$polyglot-book does not exist"  unless $polyglot-book.IO.e;
+	die "$polyglot-book is not readable" unless $polyglot-book.IO.r;
+	my Chess::Book $book .= new: $polyglot-book.IO;
 
 	my DB::SQLite $db  .= new: :$filename;
 
@@ -51,6 +52,7 @@ sub MAIN($filename = q{repertoire.db}, :$polyglot-book = q{opening-book.polyglot
 	}
 
 	my $stockfish = run 'stockfish', :in, :out;
+	$stockfish.in.say: "setoption name Threads value 8";
 
 	sub term:<best-move> returns Move {
 		with $db.query('select move from chosen_moves where position = ?', $gui.position.uint.base(36)).value {
@@ -60,7 +62,7 @@ sub MAIN($filename = q{repertoire.db}, :$polyglot-book = q{opening-book.polyglot
 		} else {
 			given $stockfish {
 				.in.say: "position fen {$gui.position.fen}";
-				.in.say: "go movetime 1000";
+				.in.say: "go movetime $MOVETIME";
 				for .out.lines {
 					when /:sigspace ^bestmove ([<[a..h]><[1..8]>]**2<[QBNR]>?)/ {
 						say "FOUND BEST MOVE! {$/[0]}";
@@ -80,9 +82,9 @@ sub MAIN($filename = q{repertoire.db}, :$polyglot-book = q{opening-book.polyglot
 	}
 
 	sub term:<search-book> returns Bag {
-		polyglot-search($gui.position, $book)
-		.map({ .<move> => .<weight> })
-		.Bag
+		with $book{$gui.position} {
+			return .map({ .<move> => .<weight> }).Bag
+		} else { return Bag.new }
 	}
 
 	sub reset {
@@ -94,11 +96,14 @@ sub MAIN($filename = q{repertoire.db}, :$polyglot-book = q{opening-book.polyglot
 		}
 	}
 
+	sleep 1 unless $gui.ready;
 	reset;
 	start loop {
-		last unless $gui.ready;
+		unless $gui.ready {
+			note "GUI is not ready for some reason";
+			last;
+		}
 		my $move = best-move;
-		say $move;
 		$gui.make-move: $move;
 		my $book-search = search-book;
 		if $book-search.elems == 0 {
