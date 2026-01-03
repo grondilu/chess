@@ -70,6 +70,14 @@ to create the opening trainer mentioned above.
 
 WIP
 
+### External links
+
+- [pgn-extract](https://www.cs.kent.ac.uk/people/staff/djb/pgn-extract/), a C program to process PGN files.  Very fast.
+- [Polyglot book format](http://hgm.nubati.net/book_format.html)
+- [PGN mentor](https://www.pgnmentor.com/files.html), shares PGN files of grand masters.
+- [raylib cheatsheet](https://www.raylib.com/cheatsheet/cheatsheet.html)
+- [stockfish](https://stockfishchess.org/)
+
 ## TODO
 
  - [x] implement rules of the game
