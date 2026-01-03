@@ -64,7 +64,7 @@ there are several other possibilities to display a chess position:
 ### Graphical User Interface
 
 As a work in progress, a graphical user interface using [raylib](http://www.raylib.com) is being developed.  It will eventually be used
-to create a the opening trainer mentioned above.
+to create the opening trainer mentioned above.
 
 ### Polyglot books
 
