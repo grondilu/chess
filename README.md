@@ -26,7 +26,7 @@ rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
 > say legal-moves startpos;
 [d3 d4 e3 e4 c3 c4 f3 f4 Nf3 Nh3 h3 h4 a3 a4 g3 g4 Na3 Nc3 b3 b4]
 > use Chess::GUI;
-> await Chess::GUI.new;  # full graphical GUI with raylib
+> Chess::GUI.new;  # full graphical GUI with raylib
  ```
 ## Description
 
