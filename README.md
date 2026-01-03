@@ -81,7 +81,7 @@ WIP
 ## TODO
 
  - [x] implement rules of the game
- - [ ] interface Stockfish
+ - [x] ~~interface Stockfish~~ (easy with `Proc::Async` or even just `run`)
  - [x] make Board image internally, not relying on lichess
  - [ ] opening and tactics trainer
  - [ ] game database management
