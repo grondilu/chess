@@ -111,9 +111,26 @@ method unlock { $!board-state = IDLE }
 method quiet { $!mute = True }
 method quit { close-window }
 
+method title is rw {
+    Proxy.new:
+	FETCH => method ()       { },
+	STORE => method ($title) {
+	    set-window-title $title
+	}
+}
+
+method opening-info {
+    use Chess::Openings;
+    use Chess::SAN;
+    my Chess::Position $position .= new;
+    return Chess::Openings::identify [~] do for @!history -> $move {
+	LEAVE $position.make: $move;
+	move-to-SAN $move, $position;
+    }
+}
+
 {
     use Color;
-
     method add-arrow(Str :$name = (^2**32).pick.base(36), square-enum :$from, square-enum :$to, Color :$color) {
 	note "adding arrow";
 	my ($origin, $destination) = $from, $to;
@@ -160,6 +177,7 @@ method reset {
     %!arrows = ();
     $!flipped-board = False;
     $!mute = False;
+    if is-window-ready { set-window-title "starting position"; }
 }
 
 # CONSTRUCTION

@@ -29,7 +29,9 @@ our sub getDisambiguator(Move $move, Chess::Position $position) {
     } else { return ''; }
 }
 
-proto move-to-SAN(Move $, Chess::Position $, :$without-annotations) returns SAN is export {*}
+proto move-to-SAN(Move $move, Chess::Position $position, :$without-annotations = False) returns SAN is export {
+    (state %){$position.uint}{$move.uint}{$without-annotations} //= {*}
+}
 multi move-to-SAN($move, $position, :$without-annotations!) {
     my $from = $move.from;
     fail "no piece on square {$from}" without $position{$from};
@@ -61,7 +63,9 @@ multi move-to-SAN($move, $position) {
     }
 }
 
-sub move-from-SAN(SAN $move, $position) returns Move is export {
+sub move-from-SAN(SAN $move, Chess::Position $position) returns Move is export {
+    # not sure why I can't use Chess::Position's WHICH method here
+    (state %){$position.uint}{$move} //=
     $position
 	.moves
 	.first({ stripSAN(move-to-SAN($_, $position)) eq stripSAN($move) })

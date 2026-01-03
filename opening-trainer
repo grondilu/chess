@@ -62,6 +62,7 @@ sub MAIN($book-path = q{resources/lichess-elite.polyglot}.IO) {
                     } else {
                         note my $pick = .pick;
                         $gui.make-move: $pick;
+                        start { $gui.title = $gui.opening-info<name>; }
                     }
                 }
             } else {
