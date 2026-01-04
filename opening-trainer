@@ -62,7 +62,7 @@ sub MAIN($filename, :book($book-path) = q{resources/lichess-elite.polyglot}, :$h
         my ($move, $position) = .<move position>;
         my $best-move = best-move $position;
         if !$best-move.defined {
-            note "unknown move?";
+            note "unknown move in position $position.fen()";
             $gui.undo;
             $gui.lock;
             Promise.in(1).then: { $gui.reset; $gui.unlock }
