@@ -134,7 +134,7 @@ method AT-KEY(Chess::Position $position) {
 	    default { $right = $middle - 1; }
 	}
     }
-    return without $first-match;
+    return List.new without $first-match;
     gather {
 	given sub ($i) {
 		my $entry = $!data.subbuf($i*$entry-size, $entry-size);

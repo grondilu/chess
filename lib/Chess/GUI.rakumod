@@ -332,6 +332,7 @@ submethod BUILD {
 
 		given $!board-state {
 		    import Vec2;
+		    when LOCKED { draw-rectangle 0, 0, 8*SS, 8*SS, Color.init(128, 128, 128, 32) }
 		    when IDLE {
 			if %mouse<pressed> && $on-board {
 			    if self[$square] and Chess::Pieces::get-color(self[$square]) ~~ $!position.turn {
@@ -357,7 +358,10 @@ submethod BUILD {
 				self.make-move: $move;
 				$!board-state = IDLE;
 				$selected-square = Square;
-				$!new-move.emit: %( :$move, :$position );
+				start {
+				    self.lock;
+				    $!new-move.emit: %( :$move, :$position );
+				}.then: { self.unlock }
 			    } else {
 				$!board-state = IDLE;
 				$selected-square = Square;
