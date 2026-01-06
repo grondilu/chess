@@ -16,25 +16,34 @@ rule TOP { ^ <game>* $ }
 rule game { <tag-pair-section> <movetext-section> <game-termination> }
 
 rule tag-pair-section { <tag-pair>* % \s* }
-rule movetext-section { <move>+ }
+rule movetext-section { <annotated-move>+ }
 
 regex tag-pair { \[ ~ \] [\s*<name=symbol>\s*<value=string>\s*] }
 
-rule move {
-  <move-number-indication>?\h*<SAN><annotation> <NAG> * <RAV> *
+rule annotated-move {
+  <move-number-indication>?\h*<move><annotation> <NAG> * <RAV> *
 }
+
+proto token move            {*}
+      token move:sym<SAN>   {
+	<castle> |
+	:!ratchet
+	<piece><disambiguation>?x?<square> |
+	[<file>x]?<square>['='<promotion-piece>]?
+      }
+      token move:sym<LAN>   {        <from=square><to=square><promotion-piece>? }
+      token move:sym<XOLALG> { <piece>?<from=square><[-x]><to=square>'ep'?<promotion-piece>? }
+
 
 token annotation { <[+#]>?[<[!?]> ** 1..2]? }
 rule RAV { \( ~ \) <move>* }
 rule move-number-indication { <integer>\.* }
 
-token SAN {
-  <castle> |
-  <piece-move> |
-  <pawn-move>
-}
-token pawn-move { [<file>x]?<square>['='<promotion=.piece>]? }
-regex piece-move { <piece><disambiguation>??x?<square> }
+token promotion-piece { <[QBNR]> }
+
+token HLAN { <from=square>'-'<to=square><promotion-piece>? }
+token SAN-pawn-move { [<file>x]?<square>['='<promotion=.piece>]? }
+regex SAN-piece-move { <piece><disambiguation>??x?<square> }
 token castle     { O ** 2..3 % \- }
 
 token disambiguation { <file> | <rank> | <square> }
