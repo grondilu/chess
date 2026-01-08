@@ -69,10 +69,6 @@ multi infix:</>(Move $move, ::?CLASS $position) returns Move is export {
     return $move;
 }
 
-method attackers(Square :$square, color :$color = $!turn) {
-    self.Chess::Board::attackers(:$square, :$color).Set
-}
-
 multi method new(Str $fen where { Chess::FEN.parse: $fen } = startpos) {
     use Chess::FEN;
     my color $turn;
@@ -365,6 +361,7 @@ method isInsufficientMaterial returns Bool {
     return False;
 }
 
+method zobrist { self.uint.base: 36 }
 method WHICH { ValueObjAt.new: "Position|{self.uint.base(36)}" }
 # http://hgm.nubati.net/book_format.html
 method uint returns uint64 {
