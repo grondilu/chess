@@ -21,30 +21,27 @@ rule movetext-section { <annotated-move>+ }
 regex tag-pair { \[ ~ \] [\s*<name=symbol>\s*<value=string>\s*] }
 
 rule annotated-move {
-  <move-number-indication>?\h*<move><annotation> <NAG> * <RAV> *
+  <move-number-indication>?\h*<move><annotation>? <NAG> * <RAV> *
 }
 
-proto token move            {*}
-      token move:sym<SAN>   {
-	<castle> |
-	:!ratchet
-	<piece><disambiguation>?x?<square> |
-	[<file>x]?<square>['='<promotion-piece>]?
-      }
-      token move:sym<LAN>   {        <from=square><to=square><promotion-piece>? }
-      token move:sym<XOLALG> { <piece>?<from=square><[-x]><to=square>'ep'?<promotion-piece>? }
+proto
+token move               {*}
+token move:sym<LAN>      { <from=square><to=square><promotion-piece>? }
+token move:sym<pawn>     { [<file>x]?<to=square>['='<promotion-piece>]? }
+token move:sym<piece>    { <piece>:!ratchet<disambiguation>?x?<to=square> }
+token move:sym<XOLALG>   { <piece>?<from=square><[-x]><to=square>'ep'?<promotion-piece>? }
+token move:sym<castle>   { O ** 2..3 % \- }
 
+proto
+token annotation {*}
+token annotation:sym<check>     { '+' }
+token annotation:sym<checkmate> { '#' }
+token annotation:sym<comment>   { <[!?]>**1..2 }
 
-token annotation { <[+#]>?[<[!?]> ** 1..2]? }
 rule RAV { \( ~ \) <move>* }
 rule move-number-indication { <integer>\.* }
 
 token promotion-piece { <[QBNR]> }
-
-token HLAN { <from=square>'-'<to=square><promotion-piece>? }
-token SAN-pawn-move { [<file>x]?<square>['='<promotion=.piece>]? }
-regex SAN-piece-move { <piece><disambiguation>??x?<square> }
-token castle     { O ** 2..3 % \- }
 
 token disambiguation { <file> | <rank> | <square> }
 

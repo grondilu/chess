@@ -3,79 +3,70 @@ use Chess;
 use Chess::PGN;
 
 sub MAIN($pgn-filename where /'.pgn'$/) {
+	print "\e7";
 
 	my $sqlite-filename = $pgn-filename.subst(/'.pgn'$/, '.sqlite');
 	fail "$sqlite-filename already exists" if $sqlite-filename.IO.e;
 
-	my DB::SQLite $db-connection .= new; #: filename => $sqlite-filename;
+	my DB::SQLite $db-connection .= new: filename => $sqlite-filename;
 
 	$db-connection.execute: q:to/END_SQL/;
 		CREATE TEMP TABLE temp_moves (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			from_hash  TEXT,
 			to_hash    TEXT NOT NULL,
-			xolalg     TEXT NOT NULL
+			uci        TEXT NOT NULL
 		);
 		END_SQL
 
 	die "$pgn-filename does not exist" unless $pgn-filename.IO.e;
 
-	die "could not parse normal PGN" unless Chess::PGN.parse: run(|qqww[pgn-extract "$pgn-filename"], :out, :err(q{/dev/null}.IO)).out.slurp(:close);
-	die "could not parse lalg   PGN" unless Chess::PGN.parse: run(|qqww[pgn-extract -Wlalg   "$pgn-filename"], :out, :err(q{/dev/null}.IO)).out.slurp(:close);
-	die "could not parse xolalg PGN" unless Chess::PGN.parse: run(|qqww[pgn-extract -Wxolalg "$pgn-filename"], :out, :err(q{/dev/null}.IO)).out.slurp(:close);
-
-
 	my $db = $db-connection.db;
-	my $sth = $db.prepare: q{INSERT INTO temp_moves (from_hash, to_hash, xolalg) values (?, ?, ?)};
+	my $sth = $db.prepare: q{INSERT INTO temp_moves (from_hash, to_hash, uci) values (?, ?, ?)};
 
-	print "\e7";
-	my $games = 0;
-	gather {
-	unless grammar :: is Chess::PGN {
-		rule comment { '{' ~ '}' <zobrist-hash> }
-		token zobrist-hash { <xdigit>**1..16 }
-	}.parse:
-		run(|qqww[pgn-extract --hashcomments -Wxolalg "$pgn-filename"], :out, :err(q[/dev/null])).out.slurp(:close),
-		actions => class {
-			has @!zobrist-hash = constant null = Nil but role { method Str { '' } };
-			method game($/) {
-				print "\e8\e[0J$<tag-pair-section>";
-				my @moves = $<movetext-section><annotated-move>»<move>.map: *.Str;
-				my @from-hash = @!zobrist-hash.head(*-1);
-				my @to-hash   = @!zobrist-hash.tail(*-1);
-				for @from-hash Z @to-hash Z @moves -> ($from, $to, $move) {
-					take $($from, $to, $move);
-					#put "$move: $from → $to";
+	my $pgn-extract = run(|qqww[pgn-extract --notags --hashcomments -Wuci "$pgn-filename"], :out, :err(q{/dev/null}.IO));
+	gather for $pgn-extract.out.lines -> $line {
+		next if $line ~~ /^$/;
+
+		print "\e8";
+			die "oops: could not parse '$line' " unless parse grammar :: is Chess::PGN {
+				rule TOP { [ <move> <zobrist-hash> ]* <game-termination> }
+				token zobrist-hash { <.xdigit>**1..16 }
+			}: $line.subst(/<[{}]>/, '', :g), actions => class {
+
+				method TOP($/) {
+					print join ' ', $<move>;
+					print "\e[0J";
+					my @moves = $<move>».Str;
+					my @from-hash = Nil, |$<zobrist-hash>.head(*-1)».Str.map: *.parse-base(16).base(36);
+					my @to-hash   = $<zobrist-hash>».Str.map: *.parse-base(16).base(36);
+					for @from-hash Z @to-hash Z @moves -> ($from, $to, $move) {
+						take $($from, $to, $move);
+					}
 				}
-				@!zobrist-hash = null;
-			}
-			method zobrist-hash($/) { @!zobrist-hash.push: $/.Str.parse-base(16).base(36) }
-			#method move:sym<LAN>   ($/) { put "LAN: $/" }
-			#method move:sym<SAN>   ($/) { put "SAN: $/" }
-			#method move:sym<XOLALG>($/) { put "XOLALG: $/" }
-		}.new
-		{ fail "Could not parse $pgn-filename, only $games games were parsed" }
-	}.rotor(1_000, :partial)
+
+			};
+		LAST print "\n";
+	}.rotor(100_000, :partial)
 	.map:
 		{
+			print "\e8\e[0JBeginning transaction...";
 			$db.begin;
 			$sth.execute: .list for .list;
 			$db.commit;
+			put " done";
 		}
 	
-	$db.finish;
-
-	print "\e8\e[0J";
+		$db.finish;
+	$pgn-extract.out.close;
 
 	$db-connection.execute: q:to/END_SQL/;
 		CREATE TABLE moves AS
-		SELECT from_hash, to_hash, xolalg, count(*) as count
+		SELECT from_hash, to_hash, uci, count(*) as count
 		FROM temp_moves
-		GROUP BY from_hash, to_hash, xolalg
+		GROUP BY from_hash, to_hash, uci
 		END_SQL
 
-	.say for $db-connection.query(q{select * from moves order by count desc limit 100}).arrays;
-	
+	#.say for $db-connection.query(q{select from_hash, to_hash from temp_moves group by from_hash, to_hash having count(distinct uci) > 1}).arrays;
+
 }
-
-
