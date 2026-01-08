@@ -1,5 +1,4 @@
 use DB::SQLite;
-use Chess;
 use Chess::PGN;
 
 sub MAIN($pgn-filename where /'.pgn'$/) {
