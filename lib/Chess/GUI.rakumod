@@ -5,6 +5,9 @@ use Chess::Position;
 use Chess::Pieces;
 use Chess::Colors;
 
+sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
+sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
+
 # CONSTANTS
 # ---------
 #
@@ -87,10 +90,13 @@ has Arrow %!arrows;
 has @!undo;
 has @!history;
 
-has Bool $!mute              = True;
+has Bool $!mute             = False;
 has Bool $!flipped-board;
 has Bool $!show-coordinates = False;
+has Bool $!frozen-board     = False;
+
 has BoardState $!board-state = IDLE;
+has BoardState @!board-state;
 
 has %!textures;
 
@@ -105,11 +111,21 @@ sub term:<DEBUG> returns Bool { with %*ENV<DEBUG> { return so /:i true/ } else {
 # METHODS
 # -------
 
-method lock   { $!board-state = LOCKED }
-method unlock { $!board-state = IDLE }
+method lock   {
+    @!board-state.push: $!board-state;
+    $!board-state = LOCKED;
+}
+method unlock { $!board-state = @!board-state.pop }
 
 method quiet { $!mute = True }
-method quit { close-window }
+method quit {
+    self!unload-sounds;
+    self!unload-textures;
+    close-window;
+}
+
+method !unload-sounds   { unload-sound   $_ for %!sounds  .values }
+method !unload-textures { unload-texture $_ for %!textures.values }
 
 method title is rw {
     Proxy.new:
@@ -143,6 +159,27 @@ method draw-eval-bar(Int $evaluation) {
     draw-rectangle 8*SS - 10, 4*SS - $height-delta + 1, 10, 4*SS + $height-delta, Color.init(255, 255, 255, 128);
 }
 
+method !draw-chessboard {
+    for ^8 X ^8 -> ($i, $j) { draw-rectangle $i * SS, $j * SS, SS, SS, (($i + $j) mod 2 ?? init-dark() !! init-light); }
+    if $!show-coordinates {
+	for ^8 {
+	    draw-text
+	    { $!flipped-board ?? .reverse !! $_ }("a".."h")[$_],
+	    SS*$_ + SS div 20,
+	    7*SS + (SS * 3 div 4),
+	    SS div 5,
+	    (($_ mod 2) ?? init-dark() !! init-light);
+	    draw-text
+	    { $!flipped-board ?? 9 - $_ !! $_ }(8 - $_).Str,
+	    7*SS + (SS * 5 div 6),
+	    SS*$_ + SS div 20,
+	    SS div 5,
+	    (($_ mod 2) ?? init-dark() !! init-light)
+	    ;
+	}
+    }
+}
+
 multi method play-sound(MoveSound::name $key) {
     with %!sounds{$key} {
 	play-sound $_ if is-sound-valid $_
@@ -154,14 +191,14 @@ multi method play-sound(:$wrong!  ) { self.play-sound: MoveSound::Wrong;   }
 use Chess::Moves;
 method make-move(Move $move) {
     my $position = $!position.uint;
+    my Bool $capture = $!position{$move.to}.defined;
     @!undo.push: $!position.make: $move;
     @!history.push: $move;
     unless $!mute {
-	if $move ~~ Chess::Moves::capture {
-	    self.play-sound: MoveSound::Capture;
-	} else { self.play-sound: MoveSound::Move }
+	self.play-sound: $capture ?? MoveSound::Capture !! MoveSound::Move;
 	self.play-sound: MoveSound::Check if $!position ~~ Check;
     }
+    #start set-window-title self.opening-info<name>;
 }
 
 method ready { is-window-ready }
@@ -177,6 +214,8 @@ method reset {
     %!arrows = ();
     $!flipped-board = False;
     $!mute = False;
+    $!board-state = IDLE;
+    @!board-state = ();
     if is-window-ready { set-window-title "starting position"; }
 }
 
@@ -184,8 +223,6 @@ method reset {
 # ------------
 #
 submethod BUILD {
-    sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
-    sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
 
     # arrow test
     #@!arrows.push: Arrow.new: :origin(e2), :destination(f5);
@@ -206,7 +243,8 @@ submethod BUILD {
 	    %!textures{$_} = load-texture-from-image $image;
 	    unload-image $image;
 	}
-	LEAVE for @piece-symbols { unload-texture %!textures{$_}; }
+	LEAVE self!unload-textures;
+
 
 	init-audio-device;
 	given "resources/sounds" {
@@ -217,11 +255,13 @@ submethod BUILD {
 	    %!sounds{MoveSound::Wrong}   = load-sound "$_/wronganswer-37702.mp3";
 	}
 	LEAVE close-audio-device;
-	LEAVE unload-sound $_ for %!sounds.values;
+	LEAVE self!unload-sounds;
 
 	until window-should-close {
 	    ENTER begin-drawing;
 	    LEAVE end-drawing;
+
+	    next if $!frozen-board;
 
 	    state Bool $on-board         = False;
 	    state %grabbed-piece;
@@ -243,57 +283,10 @@ submethod BUILD {
 		return Vec2.new: :$x, :$y;
 	    }
 
-	    #LEAVE draw-text $!board-state.Str, 10, 10, 100, init-red;
+	    #LEAVE draw-text $!board-state.Str, 10, 10, 50, init-red;
 	    #LEAVE draw-text now.Str, 10, 111, 10, init-blue;
 
-	    # draw chessboard
-	    ENTER {
-		#= draw chessboard
-		for ^8 X ^8 -> ($i, $j) { draw-rectangle $i * SS, $j * SS, SS, SS, (($i + $j) mod 2 ?? init-dark() !! init-light); }
-		if $!show-coordinates {
-		    for ^8 {
-			draw-text
-			{ $!flipped-board ?? .reverse !! $_ }("a".."h")[$_],
-			SS*$_ + SS div 20,
-			7*SS + (SS * 3 div 4),
-			SS div 5,
-			(($_ mod 2) ?? init-dark() !! init-light);
-			draw-text
-			{ $!flipped-board ?? 9 - $_ !! $_ }(8 - $_).Str,
-			7*SS + (SS * 5 div 6),
-			SS*$_ + SS div 20,
-			SS div 5,
-			(($_ mod 2) ?? init-dark() !! init-light)
-			;
-		    }
-		}
-	    }
-	    # draw arrows
-	    LEAVE {
-		.draw: :$!flipped-board for %!arrows.values;
-		%!arrows .= grep: { .value.age < 10 }
-	    }
-	    # draw pieces
-	    LEAVE {
-		for @Chess::Board::squares -> $s {
-		    my $x = file($s) * SS;
-		    my $y = rank($s) * SS;
-		    if $!flipped-board {
-			$x = 7*SS - $x;
-			$y = 7*SS - $y;
-		    }
-		    if $!board-state ~~ PIECE-DRAGGED && $s ~~ $selected-square {
-			given get-mouse-position {
-			    my $square-center = get-square-center $s;
-			    $x += (.x - $drag-offset.x - $square-center.x).Int;
-			    $y += (.y - $drag-offset.y - $square-center.y).Int;
-			}
-		    }
-		    with self[$s] {
-			draw-texture %!textures{symbol $_}, $x, $y, init-white;
-		    }
-		}
-	    }
+	    self!draw-chessboard;
 
 	    with $selected-square {
 		my @legal-moves = $!position.moves: :square($_);
@@ -367,6 +360,30 @@ submethod BUILD {
 				$selected-square = Square;
 			    }
 			}
+		    }
+		}
+	    }
+	    { # draw arrows
+		.draw: :$!flipped-board for %!arrows.values;
+		%!arrows .= grep: { .value.age < 10 }
+	    }
+	    { # draw pieces
+		for @Chess::Board::squares -> $s {
+		    my $x = file($s) * SS;
+		    my $y = rank($s) * SS;
+		    if $!flipped-board {
+			$x = 7*SS - $x;
+			$y = 7*SS - $y;
+		    }
+		    if $!board-state ~~ PIECE-DRAGGED && $s ~~ $selected-square {
+			given get-mouse-position {
+			    my $square-center = get-square-center $s;
+			    $x += (.x - $drag-offset.x - $square-center.x).Int;
+			    $y += (.y - $drag-offset.y - $square-center.y).Int;
+			}
+		    }
+		    with self[$s] {
+			draw-texture %!textures{symbol $_}, $x, $y, init-white;
 		    }
 		}
 	    }

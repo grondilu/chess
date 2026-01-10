@@ -76,109 +76,151 @@ class Move {
 	file($!to)
     }
     multi method new(
-	Str $ where /^(<[a..h]><[1..8]>)**2$/,
-	color :$color!,
-	Chess::Board :$board!
+	Str $move where /^ <Chess::PGN::move> <annotation>? $/,
+	color :$color,
+	Chess::Board :$board
     ) {
-	my ($from, $to) =
-	    square-enum::{$/[0][0]},
-	    square-enum::{$/[0][1]};
-	if $board{$from} ~~ pawn {
-	    return PawnMove.new: "$from$to"
-	}
-	elsif $board{$from} ~~ ($color ~~ white ?? wk !! bk) {
-	    if file($from) == 4 {
-		if file($to) == 6 {
-		    return KingsideCastle.new: :$color
-		}
-		elsif file($to) == 2 {
-		    return QueensideCastle.new: :$color
-		}
-	    }
-	}
-	return self.bless:
-	    from => square-enum::{$/[0][0]},
-	    to   => square-enum::{$/[0][1]}
-    }
-    multi method new(Str $ where /:i ^(<[a..h]><[1..8]>)(<[a..h]><[18]>)(<[qbnr]>)$/) {
-	my ($from, $to) = $/[^2].map: { square-enum::{$_} }
-	my piece $promotion = %(<q b n r> Z=> piece::<♕ ♗ ♘ ♖>){$/[2].lc};
-	$promotion = ¬$promotion if ~$/[1] ~~ /1$/;
-	PawnMove.bless( :$from, :$to ) but Promotion[$promotion];
-    }
-    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2/) {
-	my ($from, $to) = $/[0][^2].map: { square-enum::{$_} }
-	samewith :$from, :$to
-    }
-    multi method new(
-	Str $ where /^ <Chess::PGN::SAN><[#!]>?<[!?]>** ^2 $/,
-	color :$color!,
-	Chess::Board :$board!
-    ) {
-	given $<Chess::PGN::SAN> -> $/ {
-	    with $<castle> {
-		when 'O-O'   { return  KingsideCastle.new: :$color }
-		when 'O-O-O' { return QueensideCastle.new: :$color }
-		default      { die "unknown castling type" }
-	    }
-	    orwith $<pawn-move> -> $/ {
-		my Square $to   = square-enum::{$<square>};
-		my UInt ($file, $rank) = file($to), rank($to) + ($color ~~ white ?? 1 !! -1);
-		with $<file> { $file = %( 'a'..'h' Z=> ^8 ){.Str} }
-		elsif $color ~~ white && $to ~~ /4$/ or $color ~~ black && $to ~~ /5$/ {
-		    my $direction = $color ~~ white ?? +16 !! -16;
-		    my Square $from = $to + $direction;
-		    $from = $to + 2*$direction without $board{$from};
-		    return PawnMove.new(:$from, :$to);
-		}
-		my Square $from = $rank +< 4 + $file;
-		my PawnMove $move .=new: :$from, :$to;
-		with $<promotion> {
-		    my $promotion = %( <q b n r> Z=> wq, wb, wn, wr ){.Str.lc};
-		    $promotion = ¬$promotion if $color ~~ black;
-		    $move does Promotion[$promotion];
-		}
-		if file($from) !== file($to) {
-		    $move does capture;
-		    $move does EnPassant without $board{$to};
-		}
-		return $move;
-	    }
-	    orwith $<piece-move> -> $/ {
-		my $to = square-enum::{$<square>};
-		my piece $piece = %(<N B R Q K> Z=> piece::<♘ ♗ ♖ ♕ ♔>){$<piece>};
-		$piece = ¬$piece if $color ~~ black;
-		my Square @from = $board.findSpecificAttackingPieces: :$piece, :$to;
-		my &constructor = $board{$to}:exists ??
-		-> *%args { self.new(|%args) but capture } !!
-		-> *%args { self.new(|%args) };
-		with $<disambiguation> -> $/ {
-		    with $<file> -> $/ {
-			my $file = %( 'a'..'h' Z=> ^8 ){$/};
-			@from.=grep: { file($_) == $file };
-		    }
-		    with $<rank> -> $/ {
-			my $rank = 8 - $/.Int;
-			@from.=grep: { rank($_) == $rank };
-		    }
-		    with $<square> -> $/ {
-			@from = (square-enum::{$/},);
+	grammar :: is Chess::PGN {
+	    rule TOP { <move> }
+	}.parse: $move,
+	    actions => class {
+		method move:sym<castle>($/) {
+		    with $/ {
+			when 'O-O'   { make  KingsideCastle.new: :$color }
+			when 'O-O-O' { make QueensideCastle.new: :$color }
 		    }
 		}
-		fail "could not find piece for move $/ ($color to play) in position :\n{$board.ascii}" if @from == 0;
-		if @from > 1 {
-		    @from.=grep: -> $from {
-			my &undo = self.bless(:$from, :$to).move-pieces: $board;
-			LEAVE &undo();
-			not $board.isKingAttacked($color);
+		method move:sym<pawn>($/) {
+		    my $to = square-enum::{$<to>};
+		    my &below = * + ($color ~~ white ?? +1 !! -1)*16;
+		    my $from = &below($to);
+		    $from = &below($from) without $board{$from};
+		    $from = square-enum::{~$from};
+		    die "there is no piece on $from" without $board{$from};
+		    die "piece on $from is not a pawn" unless $board{$from} ~~ pawn;
+		    make PawnMove.new: "$from$to" ~ ($<promotion-piece> // '');
+		}
+		method move:sym<LAN>($/) {
+		    my ($from, $to) = <from to>.map: { square-enum::{$/{$_}} }
+		    my Move $default .= new:
+			    from => square-enum::{$/<from>},
+			    to   => square-enum::{$/<to>}
+			    ;
+		    with $<promotion-piece> { make PawnMove.new: "$from$to$_" }
+		    else {
+			if !$board.defined || !$color.defined { make $default; }
+			elsif $board{$from} ~~ pawn { make PawnMove.new: "$from$to"; }
+			elsif $board{$from} ~~ ($color ~~ white ?? wk !! bk) {
+			    if file($from) == 4 {
+				if file($to) == 6 {
+				    make KingsideCastle.new: :$color
+				}
+				elsif file($to) == 2 {
+				    make QueensideCastle.new: :$color
+				}
+				else { make $default }
+			    } else { make $default }
+			}
+			else { make $default }
 		    }
 		}
-		fail "ambiguity remains for move $/ ($color to play) in position:\n{$board.ascii}" if @from > 1;
-		my Square $from = @from.pick;
-		return &constructor(:$from, :$to);
+		method move:sym<piece>($/) {
+		    my $to = square-enum::{$<to>};
+		    with $<piece> {
+			my $type = %(<K Q B N R> Z=> <king queen bishop knight rook pawn>){$<piece>};
+			my @attackers = $board
+			    .attackers(:$color, :square($to))
+			    .grep({ $board{$_} ~~ Chess::Pieces::{$type} });
+
+			if @attackers > 1 {
+			    die "disambiguation needed" unless $<disambiguation>:exists;
+			    given $<disambiguation> {
+				when .<file> { @attackers.=grep: -> $a { file($a) == %('a'..'h' Z=> ^8){.<file>} } }
+				when .<rank> { @attackers.=grep: -> $a { rank($a) == .<rank>.Int - 1 } }
+				when .<square> { @attackers.=grep: -> $a { $a == .<square>.Int } }
+				default {!!!}
+			    }
+			    die "ambiguity remains" if @attackers > 1;
+			}
+			if @attackers == 1 {
+			    my $attacker = @attackers.pop;
+			    given Chess::Pieces::{$type} {
+				default {
+				    my $from = $attacker;
+				    make Move.new: :$from, :$to;
+				}
+			    }
+			} else { # attackers == 0
+			    die "no $type found attacking $to";
+			}
+		    }
+		}
 	    }
+	fail "could not make object" unless $<move>.made ~~ Move;
+	return $<move>.made;
+
+    #`{{{
+	given $/<Chess::PGN::move> -> $/ {
 	    else {...}
 	}
+	orwith $<pawn-move> -> $/ {
+	    my Square $to   = square-enum::{$<square>};
+	    my UInt ($file, $rank) = file($to), rank($to) + ($color ~~ white ?? 1 !! -1);
+	    with $<file> { $file = %( 'a'..'h' Z=> ^8 ){.Str} }
+	    elsif $color ~~ white && $to ~~ /4$/ or $color ~~ black && $to ~~ /5$/ {
+		my $direction = $color ~~ white ?? +16 !! -16;
+		my Square $from = $to + $direction;
+		$from = $to + 2*$direction without $board{$from};
+		return PawnMove.new(:$from, :$to);
+	    }
+	    my Square $from = $rank +< 4 + $file;
+	    my PawnMove $move .=new: :$from, :$to;
+	    with $<promotion> {
+		my $promotion = %( <q b n r> Z=> wq, wb, wn, wr ){.Str.lc};
+		$promotion = ¬$promotion if $color ~~ black;
+		$move does Promotion[$promotion];
+	    }
+	    if file($from) !== file($to) {
+		$move does capture;
+		$move does EnPassant without $board{$to};
+	    }
+	    return $move;
+	}
+	orwith $<piece-move> -> $/ {
+	    my $to = square-enum::{$<square>};
+	    my piece $piece = %(<N B R Q K> Z=> piece::<♘ ♗ ♖ ♕ ♔>){$<piece>};
+	    $piece = ¬$piece if $color ~~ black;
+	    my Square @from = $board.findSpecificAttackingPieces: :$piece, :$to;
+	    my &constructor = $board{$to}:exists ??
+	    -> *%args { self.new(|%args) but capture } !!
+	    -> *%args { self.new(|%args) };
+	    with $<disambiguation> -> $/ {
+		with $<file> -> $/ {
+		    my $file = %( 'a'..'h' Z=> ^8 ){$/};
+		    @from.=grep: { file($_) == $file };
+		}
+		with $<rank> -> $/ {
+		    my $rank = 8 - $/.Int;
+		    @from.=grep: { rank($_) == $rank };
+		}
+		with $<square> -> $/ {
+		    @from = (square-enum::{$/},);
+		}
+	    }
+	    fail "could not find piece for move $/ ($color to play) in position :\n{$board.ascii}" if @from == 0;
+	    if @from > 1 {
+		@from.=grep: -> $from {
+		    my &undo = self.bless(:$from, :$to).move-pieces: $board;
+		    LEAVE &undo();
+		    not $board.isKingAttacked($color);
+		}
+	    }
+	    fail "ambiguity remains for move $/ ($color to play) in position:\n{$board.ascii}" if @from > 1;
+	    my Square $from = @from.pick;
+	    return &constructor(:$from, :$to);
+	}
+	else {...}
+    }}}
     }
 
     multi method new(UInt $int) {
@@ -226,14 +268,14 @@ class  KingsideCastle does Castle[7] is export { method pseudo-SAN {   'O-O' } }
 class QueensideCastle does Castle[0] is export { method pseudo-SAN { 'O-O-O' } }
 
 class PawnMove is Move is export {
-    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2(<[qbnr]>)?$/) {
+    multi method new(Str $ where /^(<[a..h]><[1..8]>)**2(<[QBNR]>)?$/) {
 	my Square ($from, $to) = $/[0].map: { square-enum::{$_} }
 	my ($delta-rank, $delta-file) = (&rank, &file).map: { abs(.($to) - .($from)) }
 	my $blessing = self.bless: :$from, :$to;
 	if    $delta-rank == 2 && $delta-file == 0  { return $blessing }
 	elsif $delta-rank|$delta-file !== 1         { fail "illegal pawn move from $from to $to" }
 	elsif file($to) !== file($from)             { $blessing does capture     }
-	with $/[1]                                  { $blessing does Promotion[%(<b n r q> Z=> bishop, knight, rook, queen){$_}] }
+	with $/[1]                                  { $blessing does Promotion[%(<B N R Q> Z=> bishop, knight, rook, queen){$_}] }
 	return $blessing;
     }
     method piece-type { pawn }
@@ -256,15 +298,17 @@ role EnPassant is export {
     }
 }
 
-role Promotion[piece:D $promotion] is export {
-    method LAN {
-	self.Move::LAN ~ symbol($promotion).lc
-    }
-    method pseudo-SAN { self.PawnMove::pseudo-SAN ~ '=' ~ symbol($promotion).uc; }
+role Promotion[piece:U $promotion] is export {
+    method LAN { self.Move::LAN ~ self.symbol.uc }
+    method symbol { Chess::Pieces::{*}.first($promotion).&symbol.uc }
+    method pseudo-SAN { self.PawnMove::pseudo-SAN ~ '=' ~ self.symbol; }
     method move-pieces(Move::FullyDefined: Chess::Board $board) {
 	my $to = $board{self.to};
 	my $from = $board{self.from};
-	$board{self.to} = $promotion given $board{self.from}:delete;
+	my $color = Chess::Pieces::get-color $board{self.from}:delete;
+	$board{self.to} = Chess::Pieces::piece::{*}.first({
+	    $_ ~~ $promotion && .&Chess::Pieces::get-color ~~ $color
+	});
 	return -> {
 	    $board{self.to}:delete;
 	    $board{self.to} = $to;
@@ -272,7 +316,7 @@ role Promotion[piece:D $promotion] is export {
 	}
     }
     method uint(Move::FullyDefined:) {
-	self.Move::uint + (%(wn, wb, wr, wq Z=> 1..4){$promotion ≡ white ?? $promotion !! ¬$promotion} +& 7) +< 12;
+	self.Move::uint + (%(<N B R Q> Z=> 1..4){self.symbol} +& 7) +< 12;
     }
 }
 
