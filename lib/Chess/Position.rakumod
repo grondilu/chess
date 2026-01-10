@@ -46,6 +46,50 @@ has UInt ($.half-moves-count, $.move-number);
 
 method reset-half-moves-count { $!half-moves-count = 0 }
 
+method run-engine(*%options) {
+    my $engine = %options<engine> // 'stockfish';
+    my $command = %options<hostname>.defined ?? "ssh %options<hostname> $engine" !! $engine;
+    my %uci-info;
+    given run |$command.words, :in, :out {
+	LEAVE {
+	    .in.say: "stop";
+	    .in.say: "quit";
+	    .in.close;
+	    .say for .out.slurp(:close);
+	    note "stockfish terminated";
+	}
+	.in.say: "uci";
+	for .out.lines {
+		default { .note; proceed }
+		when /:s ^(id|option) name (.+)/ { %uci-info{$/[0]}<name> = $/[1].Str }
+		when /^uciok$/ { last }
+	}
+	.in.say: "position fen {self.fen}";
+	.in.say: do
+		with   %options<depth>    { "go depth $_"       }
+		orwith %options<nodes>    { "go nodes $_"       }
+		orwith %options<movetime> { "go movetime $_"    }
+		else { "go depth 30" }
+
+	for .out.lines {
+		my token uci-move { [<[a..h]><[1..8]>]**2<[QBNR]>? }
+		when /:s ^bestmove <bestmove=uci-move> [ponder <ponder=uci-move>]?/ {
+		    use DB::SQLite;
+		    my DB::SQLite $db .= new: filename => "%*ENV<HOME>/Documents/chess.sqlite";
+			my %result =
+			    bestmove => $<bestmove>.Str,
+			    ponder   => $<ponder>.?Str,
+			    timestamp => now.Int,
+			    engine_id => %uci-info<id><name>,
+			    |%options
+			;
+		}
+		default { .note }
+	}
+    }
+}
+
+
 multi infix:</>(Move $move, ::?CLASS $position) returns Move is export {
     use Chess::Board;
     my Str $lan = $move.LAN;
@@ -222,11 +266,12 @@ method fen returns Str {
     $!move-number
 }
 
+method attackers(:$square, :$color = self.turn) { self.Chess::Board::attackers(:$color, :$square) }
 method moves(Bool :$legal = True, piece :$piece, UInt :$square) {
     my ($us, $them) = $!turn, ¬$!turn;
     my @squares = $square.defined ?? ($square,) !! @Chess::Board::squares;
 
-    my @ = .<>.cache given (state %cache){self.fen}{$legal}{$piece.defined ?? symbol($piece) !! 'all'}{$square // 'all'} //=
+    my @ = .<>.cache given (state %cache){self.fen}{$legal}{$piece.defined ?? symbol($piece) !! 'all'}{$square // 'all'} //= Array.new:
     gather {
 	for @squares -> Square $from {
 	    next if self{$from}:!exists || self{$from} ≡ $them;
@@ -236,8 +281,8 @@ method moves(Bool :$legal = True, piece :$piece, UInt :$square) {
 		my $to = $from + get-offsets($pawn)[0];
 		if !self{$to} {
 		    if rank($to) == $PROMOTION-RANK {
-			for wq, wn, wr, wb -> $promotion {
-			    take PawnMove.new(:$from, :$to) but Promotion[self.turn ~~ white ?? $promotion !! ¬$promotion];
+			for queen, knight, rook, bishop -> $promotion {
+			    take PawnMove.new(:$from, :$to) but Promotion[$promotion];
 			}
 		    } else { take PawnMove.new: :$from, :$to; }
 		    $to = $from + get-offsets($pawn)[1];
@@ -252,9 +297,9 @@ method moves(Bool :$legal = True, piece :$piece, UInt :$square) {
 		    next unless $to ~~ Square;
 		    if self{$to}.defined && self{$to} ≡ $them {
 			if rank($to) == $PROMOTION-RANK {
-			    for wq, wn, wr, wb -> $promotion {
+			    for queen, knight, rook, bishop -> $promotion {
 				my PawnMove $pawn-move .= new: :$from, :$to;
-				$pawn-move does Promotion[self.turn ~~ white ?? $promotion !! ¬$promotion];
+				$pawn-move does Promotion[$promotion];
 				$pawn-move does capture;
 				take $pawn-move;
 			    }
