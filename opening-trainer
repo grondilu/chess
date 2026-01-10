@@ -1,104 +1,37 @@
 #!/usr/bin/env -S raku -Ilib
-use Chess::GUI;
+use Chess;
 use Chess::Moves;
+use Chess::GUI;
 use DB::SQLite;
 
-sub MAIN($filename, :book($book-path) = q{resources/lichess-elite.polyglot}, :$hostname, :$rdbms = q{sqlite3}) {
+sub MAIN {
 
 
-    use Chess::Book;
-
-    die "book does not exist"  unless $book-path.IO.e;
-    die "book is not readable" unless $book-path.IO.r;
-    my Chess::Book $book .=new: $book-path.IO;
-
-    my DB::SQLite $db  .= new: :$filename;
+    my DB::SQLite $db  .= new: filename => "%*ENV<HOME>/Documents/chess.sqlite";
     my Chess::GUI $gui .= new;
 
-    sub best-move(Chess::Position $position) returns Move {
-        my $query = qq[SELECT move FROM chosen_moves WHERE position = '{$position.uint.base(36)}'];
+    react {
 
-        if $hostname.defined {
-            return (state %){$position.uint} //= do
-            given run qqww<ssh $hostname $rdbms $filename>, :out, :in {
-                .in.say($query);
-                .in.close;
-                my $output = .out.slurp(:close);
-                if $output ne '' {
-                    Move.new: $output.trim.Int;
-                } else { Move }
-            }
-        } else {
-            with $db.query($query).value {
-                return Move.new($_);
-            } else { return Move }
-        }
-    }
-
-    sub term:<search-book> returns Bag {
-            $book{$gui.position}.map({ .<move> => .<weight> }).Bag
-    }
-
-    sub reset {
-        $gui.reset;
-        if rand < .5 {
-            note "flipping board";
-            with search-book {
-                if .elems == 0 {
-                    note "no move found at all in $book-path"
-                } elsif .values.all == 0 {
-                    note "all weights are zero!"
-                } else {
-                    $gui.make-move: .pick;
-                }
-            }
-            $gui.flip;
-        }
-        $gui.unlock;
-    }
-
-    reset;
-    $gui.new-move.Supply.tap: {
-        my ($move, $position) = .<move position>;
-        my $best-move = best-move $position;
-        if !$best-move.defined {
-            note "unknown move in position $position.fen()";
-            $gui.undo;
-            $gui.lock;
-            Promise.in(1).then: { $gui.reset; $gui.unlock }
-        } else {
-            if $move eq $best-move {
-                #note "that's the correct move";
-                #$gui.play-sound: :correct;
-                with search-book {
-                    if .elems == 0 {
-                        note "no move found at all in $book-path";
-                        Promise.in(3).then: { reset }
-                    } elsif .values.all == 0 {
-                        note "all weights are zero!"
+        whenever $gui.new-move.Supply {
+            with $db.query(qq[select uci as weight from lichess where from_hash = '$gui.position.uint.base(36)' group by uci order by RANDOM()*count(*) desc limit 1]).value {
+                start {
+                    $gui.lock;
+                    sleep .1;
+                    with Move.new: $_, :color($gui.position.turn), :board($gui.position) {
+                        $gui.make-move: $_
                     } else {
-                        $gui.make-move: .pick;
-                        start { $gui.title = $gui.opening-info<name>; }
-                        start {
-                            unless best-move($gui.position).defined {
-                                note "No repertoire move here, resetting in 3 seconds";
-                                $gui.lock;
-                                Promise.in(3).then: { reset }
-                            }
-                        }
+                        note "could not make move $_ in position $gui.position.fen()";
+                        done;
                     }
+                    $gui.unlock;
                 }
-            } else {
-                use Color;
-                $gui.play-sound: :wrong;
-                $gui.undo;
-                $gui.add-arrow: :from($best-move.from), :to($best-move.to), :color(Color.new: rgba => (255, 0, 0, 64));
-                $gui.lock;
-                Promise.in(3).then: { $gui.reset; $gui.unlock }
-            }
+            } else { note "no book move, quitting"; $gui.reset; }
+        }
+        whenever $gui.raylib {
+            done;
         }
     }
-    await $gui.raylib;
+
 }
 
 # vim: ft=raku shiftwidth=4 nowrap expandtab nu
