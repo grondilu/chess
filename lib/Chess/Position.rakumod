@@ -46,7 +46,8 @@ has UInt ($.half-moves-count, $.move-number);
 
 method reset-half-moves-count { $!half-moves-count = 0 }
 
-method run-engine(*%options) {
+use DB::SQLite;
+method run-engine(DB::SQLite :$database, *%options) {
     my $engine = %options<engine> // 'stockfish';
     my $command = %options<hostname>.defined ?? "ssh %options<hostname> $engine" !! $engine;
     my %uci-info;
@@ -74,8 +75,7 @@ method run-engine(*%options) {
 	for .out.lines {
 		my token uci-move { [<[a..h]><[1..8]>]**2<[QBNR]>? }
 		when /:s ^bestmove <bestmove=uci-move> [ponder <ponder=uci-move>]?/ {
-		    use DB::SQLite;
-		    my DB::SQLite $db .= new: filename => "%*ENV<HOME>/Documents/chess.sqlite";
+		    with $database {
 			my %result =
 			    bestmove => $<bestmove>.Str,
 			    ponder   => $<ponder>.?Str,
@@ -83,6 +83,8 @@ method run-engine(*%options) {
 			    engine_id => %uci-info<id><name>,
 			    |%options
 			;
+		    }
+		    return Move.new: $<bestmove>.Str, :color(self.turn), :board(self);
 		}
 		default { .note }
 	}
