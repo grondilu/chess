@@ -251,11 +251,12 @@ method reset {
 # ------------
 #
 submethod TWEAK {
+
     # arrow tests
     #@!arrows.push: Arrow.new: :origin(e2), :destination(f5);
     #self.add-arrow: :from(e2), :to(e4);
 }
-submethod BUILD {
+submethod BUILD(Bool :$!terse) {
 
     $!raylib = start {
 
