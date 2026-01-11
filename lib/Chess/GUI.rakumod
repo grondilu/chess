@@ -5,8 +5,8 @@ use Chess::Position;
 use Chess::Pieces;
 use Chess::Colors;
 
-sub init-light { Color.init($_, $_, $_, 255) given 256*4 div 5 }
-sub init-dark  { Color.init($_, $_, $_, 255) given 256*3 div 5 }
+sub init-light { Color.init(238, 220, 151, 255) }
+sub init-dark  { Color.init(184,139,74, 255) }
 
 # CONSTANTS
 # ---------
@@ -33,7 +33,7 @@ class Vec2 {
     multi infix:</>(::?CLASS $a, Real     $b) returns ::?CLASS is export { ::?CLASS.new: :x($a.x /   $b), :y($a.y / $b   ) }
     sub norm      (::?CLASS $v) returns Num  is export { sqrt( $v.x**2 + $v.y**2 ) }
     sub normalized(::?CLASS $v) returns ::?CLASS is export { $v / norm($v) }
-    sub square-to-vec2(square-enum(Cool) $sq, Bool :$flipped-board = False) returns ::?CLASS is export {
+    sub square-to-vec2(Square $sq, Bool :$flipped-board = False) returns ::?CLASS is export {
         my Num(Cool) ($x, $y) = (&file, &rank).map: { .($sq) + 1/2 }
         ($x, $y) .= map: 8 - * if $flipped-board;
         ($x, $y) .= map: * * SS;
@@ -46,13 +46,17 @@ class Arrow {
     has Square ($.origin, $.destination);
     has Instant $!then = now;
     method age { now - $!then }
-    has Color $.color .= new: :rgba(128, 128, 128, 255);
+    has Color $.color .= new: :rgba(128, 128, 128, 128);
     method draw(Bool :$flipped-board = False) {
 	import Vec2;
 	my Vec2 ($from, $to) = ($!origin, $!destination).map: { square-to-vec2 $_, :$flipped-board }
 	my Vec2 $i = normalized($to - $from);
 	my Vec2 $j = normalized Vec2.new: :x(-$i.y), :y($i.x);
 
+	# alpha decay
+	$!color.alpha: max(0, $!color.alpha - self.age.round);
+
+	# geometry
 	#               E+
 	#                | \
 	#  A+------------+  \
@@ -90,10 +94,13 @@ has Arrow %!arrows;
 has @!undo;
 has @!history;
 
-has Bool $!mute             = False;
-has Bool $!flipped-board;
-has Bool $!show-coordinates = False;
-has Bool $!frozen-board     = False;
+has Bool $.mute                = False;
+has Bool $.terse               = False;
+has Bool $.flipped-board;
+
+has Bool $!show-coordinates    = False;
+has Bool $!frozen-board        = False;
+has Bool $!highlight-last-move = True;
 
 has BoardState $!board-state = IDLE;
 has BoardState @!board-state;
@@ -115,7 +122,7 @@ method lock   {
     @!board-state.push: $!board-state;
     $!board-state = LOCKED;
 }
-method unlock { $!board-state = @!board-state.pop }
+method unlock { $!board-state = @!board-state.pop if $!board-state ~~ LOCKED && @!board-state > 0 }
 
 method quiet { $!mute = True }
 method quit {
@@ -134,25 +141,41 @@ method title is rw {
 	    set-window-title $title
 	}
 }
+method !draw-arrows {
+    .draw: :$!flipped-board for %!arrows.values;
+    %!arrows .= grep: { .value.age < 20 }
+}
 
-method opening-info {
+sub opening-info(@moves) {
     use Chess::Openings;
     use Chess::SAN;
     my Chess::Position $position .= new;
-    return Chess::Openings::identify [~] do for @!history -> $move {
+    return Chess::Openings::identify [~] do for @moves -> $move {
 	LEAVE $position.make: $move;
 	move-to-SAN $move, $position;
+    }
+}
+method !highlight-last-move {
+    with @!history.tail {
+	self!highlight-square: .from;
+	self!highlight-square: .to;
     }
 }
 
 {
     use Color;
     method add-arrow(Str :$name = (^2**32).pick.base(36), square-enum :$from, square-enum :$to, Color :$color) {
-	note "adding arrow";
+	note "adding arrow from $from to $to";
 	my ($origin, $destination) = $from, $to;
 	%!arrows{$name} = $color ?? Arrow.new(:$origin, :$destination, :$color) !! Arrow.new(:$origin, :$destination);
     }
+    method !highlight-square(Square $square, Color :$color = Color.new: :rgba(128, 128, 0, 128)) {
+	import Vec2;
+	my Vec2 $pos = square-to-vec2 $square, :$!flipped-board;
+	draw-rectangle ($pos.x - SS/2).round, ($pos.y - SS/2).round, SS, SS, Raylib::Bindings::Color.init: |$color.rgba;
+    }
 }
+
 method draw-eval-bar(Int $evaluation) {
     my $height-delta = round(SS*($!position.turn ~~ black ?? -1 !! +1)*&sigmoid($evaluation / 100));
     draw-rectangle 8*SS - 10, 0, 10, 4*SS - $height-delta, Color.init(0, 0, 0, 128);
@@ -188,17 +211,22 @@ multi method play-sound(MoveSound::name $key) {
 multi method play-sound(:$correct!) { self.play-sound: MoveSound::Correct; }
 multi method play-sound(:$wrong!  ) { self.play-sound: MoveSound::Wrong;   }
 
+
 use Chess::Moves;
 method make-move(Move $move) {
     my $position = $!position.uint;
     my Bool $capture = $!position{$move.to}.defined;
     @!undo.push: $!position.make: $move;
     @!history.push: $move;
-    unless $!mute {
-	self.play-sound: $capture ?? MoveSound::Capture !! MoveSound::Move;
-	self.play-sound: MoveSound::Check if $!position ~~ Check;
+    if self.ready {
+	unless $!mute {
+	    self.play-sound: $capture ?? MoveSound::Capture !! MoveSound::Move;
+	    self.play-sound: MoveSound::Check if $!position ~~ Check;
+	}
+	unless $!terse {
+	    start set-window-title opening-info(@!history)<name>;
+	}
     }
-    #start set-window-title self.opening-info<name>;
 }
 
 method ready { is-window-ready }
@@ -222,11 +250,12 @@ method reset {
 # CONSTRUCTION
 # ------------
 #
-submethod BUILD {
-
-    # arrow test
+submethod TWEAK {
+    # arrow tests
     #@!arrows.push: Arrow.new: :origin(e2), :destination(f5);
     #self.add-arrow: :from(e2), :to(e4);
+}
+submethod BUILD {
 
     $!raylib = start {
 
@@ -301,9 +330,10 @@ submethod BUILD {
 	    }
 	    with chr get-char-pressed {
 		when 'f' { self.flip }
-		when 'c' { $!show-coordinates    = !$!show-coordinates    }
+		when 'c' { $!show-coordinates    ?^= True;   }
 		when 'u' { self.undo }
 		when 'r' { self.reset }
+		when 'h' { $!highlight-last-move ?^= True;   }
 	    }
 
 	    if is-cursor-on-screen {
@@ -363,10 +393,8 @@ submethod BUILD {
 		    }
 		}
 	    }
-	    { # draw arrows
-		.draw: :$!flipped-board for %!arrows.values;
-		%!arrows .= grep: { .value.age < 10 }
-	    }
+	    LEAVE self!draw-arrows;
+	    self!highlight-last-move if $!highlight-last-move;
 	    { # draw pieces
 		for @Chess::Board::squares -> $s {
 		    my $x = file($s) * SS;
