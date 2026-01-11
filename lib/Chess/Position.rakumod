@@ -66,6 +66,9 @@ method run-engine(DB::SQLite :$database, *%options) {
 		when /^uciok$/ { last }
 	}
 	.in.say: "position fen {self.fen}";
+	if %options<threads>:exists {
+	    .in.say: "setoption name Threads value %options<threads>";
+	}
 	.in.say: do
 		with   %options<depth>    { "go depth $_"       }
 		orwith %options<nodes>    { "go nodes $_"       }
