@@ -43,7 +43,7 @@ multi get-offsets(king  ) { samewith(queen) }
 
 our sub get-mask(piece $piece --> UInt) is export { 1 +< (($piece +& 0b111) - 1) }
 
-our sub symbol(piece $piece) is export { ($piece +& 8 ?? *.lc !! *.uc)(<p n b r q k>[$piece +& 0b0111 - 1]) }
+our sub symbol(piece:D $piece) is export { ($piece +& 8 ?? *.lc !! *.uc)(<p n b r q k>[$piece +& 0b0111 - 1]) }
 
 our sub infix:<attacks>(piece $piece, UInt $index --> Bool) is looser(&infix:<+>) is export {
     so (
