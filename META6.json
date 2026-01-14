@@ -12,7 +12,7 @@
     "test-depends" : [ ],
     "depends" : [ 
 	    "Base64",
-	    "Colors",
+	    "Color",
 	    "URI::Encode",
 	    "Terminal::Size",
 	    "Terminal::ANSI",
@@ -73,7 +73,6 @@
 	    "www.pgnmentor.com/players/Karpov.pgn",
 	    "www.pgnmentor.com/players/Kasparov.pgn",
 	    "WorldChamp2013.pgn",
-	    "WorldChamp2013-annotated.pgn",
 	    "openings/a.tsv",
 	    "openings/b.tsv",
 	    "openings/c.tsv",
