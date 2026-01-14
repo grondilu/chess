@@ -32,7 +32,7 @@ token move:sym<piece>    { <piece>:!ratchet<disambiguation>??x?<to=square> }
 token move:sym<XOLALG>   { <piece>?<from=square><[-x]><to=square>'ep'?<promotion-piece>? }
 token move:sym<castle>   { O ** 2..3 % \- }
 
-token SAN { O**2..3%'-'|<piece>:!ratchet<disambiguation>?x?<square>|[<file>x]?<square>['='<promotion-piece>]? }
+token SAN { O**2..3%'-'|<piece>:!ratchet<disambiguation>??x?<square>|[<file>x]?<square>['='<promotion-piece>]? }
 
 proto
 token annotation {*}
