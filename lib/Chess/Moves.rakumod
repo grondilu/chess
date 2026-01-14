@@ -94,8 +94,14 @@ class Move {
 		    my $to = square-enum::{$<to>};
 		    my &below = * + ($color ~~ white ?? +1 !! -1)*16;
 		    my $from = &below($to);
-		    $from = &below($from) without $board{$from};
-		    $from = square-enum::{~$from};
+		    with $<file> { $from = square-enum::{$_ ~ (8 - rank($from))}; } 
+		    else {
+			$from = &below($from) without $board{$from};
+			$from = square-enum::{~$from};
+		    }
+		    #note "this is a capture!" with $<file>;
+		    #note "from=$from";
+		    #note "rank(from)={rank($from)}";
 		    die "there is no piece on $from" without $board{$from};
 		    die "piece on $from is not a pawn" unless $board{$from} ~~ pawn;
 		    make PawnMove.new: "$from$to" ~ ($<promotion-piece> // '');
@@ -133,14 +139,20 @@ class Move {
 			    .grep({ $board{$_} ~~ Chess::Pieces::{$type} });
 
 			if @attackers > 1 {
-			    die "disambiguation needed" unless $<disambiguation>:exists;
-			    given $<disambiguation> {
+			    with $<disambiguation> {
 				when .<file> { @attackers.=grep: -> $a { file($a) == %('a'..'h' Z=> ^8){.<file>} } }
-				when .<rank> { @attackers.=grep: -> $a { rank($a) == .<rank>.Int - 1 } }
+				when .<rank> { @attackers.=grep: -> $a { rank($a) == 8 - .<rank>.Int } }
 				when .<square> { @attackers.=grep: -> $a { $a == .<square>.Int } }
 				default {!!!}
+			    } else {
+				# Cheating a bit here, as I'm going to assume the board is also a position
+				my %legal-moves = @attackers.map: -> $square {
+				    $square => $board.moves: :legal, :$square;
+				}
+				@attackers.=grep: -> $square { $board.moves(:legal, :$square).elems > 0 }
 			    }
 			    die "ambiguity remains" if @attackers > 1;
+			    die "we lost track of attackers" if @attackers == 0;
 			}
 			if @attackers == 1 {
 			    my $attacker = @attackers.pop;
