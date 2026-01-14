@@ -28,7 +28,7 @@ proto
 token move               {*}
 token move:sym<LAN>      { <from=square><to=square><promotion-piece>? }
 token move:sym<pawn>     { [<file>x]?<to=square>['='<promotion-piece>]? }
-token move:sym<piece>    { <piece>:!ratchet<disambiguation>?x?<to=square> }
+token move:sym<piece>    { <piece>:!ratchet<disambiguation>??x?<to=square> }
 token move:sym<XOLALG>   { <piece>?<from=square><[-x]><to=square>'ep'?<promotion-piece>? }
 token move:sym<castle>   { O ** 2..3 % \- }
 
