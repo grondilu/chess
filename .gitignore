@@ -1,0 +1,7 @@
+.precomp
+lib/.precomp
+t/.precomp
+*.rakumod.precomp
+*.o
+*.so
+resources/libraries/
