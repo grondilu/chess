@@ -1,11 +1,22 @@
 use v6.d;
 
 unit module Chess;
+
+sub compile-progress(Str $msg) {
+    my $t = DateTime.now.local.hh-mm-ss;
+    $*ERR.print: "$t  chess: $msg\n";
+    $*ERR.flush;
+}
+
+BEGIN { compile-progress('start (first run precompiles; can take several minutes)'); }
+
 use Chess::Zobrist;
 
+BEGIN { compile-progress('Zobrist loaded'); }
+
 # ---------------------------------------------------------------------------
-# Chess move generation and validation in Raku.
-# Not an engine: no search, no evaluation. Zobrist hashing is C via NativeCall.
+# Chess move generation and validation in pure Raku.
+# Not an engine: no search, no evaluation, no NativeCall.
 # Representation is a 64-square mailbox (a1 = 0, h8 = 63), the same
 # indexing Stockfish uses. Legal moves are pseudo-legal moves that do
 # not leave the moving side's king in check.
@@ -85,7 +96,9 @@ class X::Chess::InvalidMove is X::Chess {
 # ---------------------------------------------------------------------------
 
 # Mailbox order a1=0 .. h8=63 (rank-major, files a–h within each rank).
+BEGIN { compile-progress('Square enum'); }
 enum Square is export (1..8 X[R~] "A".."H");
+BEGIN { compile-progress('Square enum done'); }
 
 sub file-of(Int $s --> Int) is export { $s +& 7 }
 sub rank-of(Int $s --> Int) is export { $s +> 3 }
@@ -114,6 +127,7 @@ sub sq(Str() $name --> Square) is export {
 # Built as nested Lists so `constant @` does not flatten a level of structure.
 
 constant @KNIGHT-TO = do {
+    compile-progress('knight table');
     my @d = (1, 2), (1, -2), (-1, 2), (-1, -2), (2, 1), (2, -1), (-2, 1), (-2, -1);
     my @t = [] xx 64;
     for ^64 -> $s {
@@ -129,6 +143,7 @@ constant @KNIGHT-TO = do {
 };
 
 constant @KING-TO = do {
+    compile-progress('king table');
     my @d = (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1);
     my @t = [] xx 64;
     for ^64 -> $s {
@@ -145,6 +160,7 @@ constant @KING-TO = do {
 
 # [color][from] -> squares a pawn of that color attacks
 constant @PAWN-ATK = do {
+    compile-progress('pawn-attack table');
     my @w = [] xx 64;
     my @b = [] xx 64;
     for ^64 -> $s {
@@ -159,6 +175,7 @@ constant @PAWN-ATK = do {
 };
 
 constant @RAYS = do {
+    compile-progress('ray table');
     my @d = (0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, 1), (1, -1), (-1, -1);
     my @t = [] xx 64;
     for ^64 -> $s {
@@ -190,6 +207,8 @@ constant @CR-MASK = do {
     @m[H8] = BK;
     @m.List
 };
+
+BEGIN { compile-progress('attack tables done; compiling classes'); }
 
 sub knight-dest(Int $s) is export { @KNIGHT-TO[$s].map({ Square($_) }).List }
 sub king-dest(Int $s)   is export { @KING-TO[$s].map({ Square($_) }).List }
@@ -1220,3 +1239,5 @@ class Position is export {
 sub chess-position(Str $fen = START-FEN --> Position) is export {
     Position.from-fen($fen)
 }
+
+BEGIN { compile-progress('done'); }

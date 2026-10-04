@@ -2,6 +2,5 @@
 lib/.precomp
 t/.precomp
 *.rakumod.precomp
-*.o
-*.so
-resources/libraries/
+gui/chess-gui
+gui/pieces/png/

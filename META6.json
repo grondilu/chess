@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "auth": "zef:chess-raku",
   "api": "1",
-  "description": "Raku chess move generation and validation (Zobrist hashing via NativeCall)",
+  "description": "Pure Raku chess move generation and validation (no engine, no NativeCall)",
   "authors": [ "chess-raku" ],
   "license": "MIT",
   "provides": {

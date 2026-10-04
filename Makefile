@@ -1,20 +1,15 @@
-CC      ?= cc
-CFLAGS  ?= -O2 -fPIC -std=c11
-LDFLAGS ?= -shared
-LIBDIR  := resources/libraries
-LIB     := $(LIBDIR)/libzobrist.so
-SRC     := src/zobrist.c
+.PHONY: all clean test gui gui-raku
 
-.PHONY: all clean test
-
-all: $(LIB)
-
-$(LIB): $(SRC)
-	mkdir -p $(LIBDIR)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+all:
 
 clean:
-	rm -f $(LIB)
+	$(MAKE) -C gui clean
 
-test: all
+gui:
+	$(MAKE) -C gui
+
+gui-raku:
+	$(MAKE) -C gui raku
+
+test:
 	prove -e 'raku -Ilib' t
